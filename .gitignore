@@ -1,8 +1,9 @@
 .pio
 
-# Generated LittleFS assets — rebuilt by `pio run` (minify + prepare_littlefs)
+# Generated LittleFS assets — rebuilt by `pio run` (minify + prepare_littlefs).
+# (The build scripts in src/web/build/ stay tracked; that dir has its own
+#  .gitignore that excludes only the generated minified output.)
 data/
-src/web/build/
 .littlefs_hash
 
 # VS Code (generated)
