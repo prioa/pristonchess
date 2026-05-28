@@ -1,6 +1,6 @@
 #include "simulation_mode.h"
 #include "chess_utils.h"
-#include "display/display.h"
+#include "clock_state.h"
 #include "wifi_manager_esp32.h"
 
 // Owned by main.cpp.

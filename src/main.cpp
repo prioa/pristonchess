@@ -5,7 +5,7 @@
 #include "chess_lichess.h"
 #include "chess_moves.h"
 #include "chess_utils.h"
-#include "display/display.h"
+#include "clock_state.h"
 #include "elo_fetcher.h"
 #include "led_colors.h"
 #include "move_history.h"
@@ -196,7 +196,6 @@ void setup() {
   moveHistory.begin();
   profiles.begin();
   boardDriver.beginHardware();
-  Display::begin();
   wifiManager.begin();
 
   // NOTE: boardDriver.checkCalibration() is intentionally NOT called at
@@ -265,7 +264,6 @@ void loop() {
   // the web client whether a game is running (used by the "Kein Spiel läuft"
   // banner on board.html).
   wifiManager.setActiveGameMode(static_cast<int>(currentMode));
-  Display::tick(static_cast<int>(currentMode), activeGame, &chessClock);
 
   // Push game status (turn, check, opening, clocks) to web UI
   {

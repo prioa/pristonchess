@@ -1,5 +1,19 @@
 .pio
+
+# Generated LittleFS assets — rebuilt by `pio run` (minify + prepare_littlefs)
+data/
+src/web/build/
+.littlefs_hash
+
+# VS Code (generated)
 .vscode/.browse.c_cpp.db*
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# Pre-rebrand backups (kept locally, not pushed)
+*.pristonchess.bak
+
+# Local diagnostics / scratch
+a3144_test/
+Bildschirmfoto*.png
