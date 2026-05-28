@@ -1,0 +1,715 @@
+<!doctype html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0f1115">
+    <title>PristonChess — Spieler</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+    <link rel="stylesheet" href="./css/styles.css">
+    <style>
+        /* Page-specific layout for the player list. Sits on top of the
+           shared design system; uses existing tokens. */
+        .leader-list, .player-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: var(--space-2);
+        }
+        .player-row {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            padding: var(--space-3);
+            background: var(--color-bg-elev-2);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            transition: border-color var(--duration-1) var(--easing),
+                        transform var(--duration-1) var(--easing);
+        }
+        .player-row:hover { border-color: var(--color-border-strong); }
+        .player-row.active {
+            border-color: var(--color-accent);
+            box-shadow: 0 0 0 3px var(--color-accent-ring);
+        }
+        .player-avatar {
+            width: 44px;
+            height: 44px;
+            min-width: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--color-bg-elev-3);
+            color: var(--color-text);
+            font-size: 22px;
+            user-select: none;
+        }
+        .player-name {
+            flex: 1;
+            min-width: 0;
+        }
+        .player-name strong {
+            display: block;
+            color: var(--color-text);
+            font-size: var(--fs-md);
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .player-stats {
+            color: var(--color-text-muted);
+            font-size: var(--fs-xs);
+            font-family: var(--font-mono);
+            letter-spacing: 0.04em;
+            margin-top: 2px;
+        }
+        .player-actions {
+            display: flex;
+            gap: var(--space-1);
+            flex-shrink: 0;
+        }
+        .icon-btn {
+            width: 36px;
+            height: 36px;
+            border: 1px solid var(--color-border-strong);
+            background: var(--color-bg-elev-3);
+            color: var(--color-text-muted);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--duration-1) var(--easing);
+            -webkit-tap-highlight-color: transparent;
+        }
+        .icon-btn:hover { color: var(--color-text); border-color: var(--color-text-subtle); }
+        .icon-btn.danger:hover { color: var(--color-danger); border-color: var(--color-danger); background: var(--color-danger-bg); }
+        .icon-btn.success:hover { color: var(--color-success); border-color: var(--color-success); background: var(--color-success-bg); }
+        .leader-rank {
+            width: 28px;
+            min-width: 28px;
+            text-align: center;
+            font-family: var(--font-mono);
+            font-weight: 700;
+            color: var(--color-accent);
+            font-size: var(--fs-md);
+        }
+        .leader-rank.gold   { color: #ffd166; }
+        .leader-rank.silver { color: #c9d1d9; }
+        .leader-rank.bronze { color: #d7995a; }
+        .stat-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            background: var(--color-bg-elev-3);
+            border-radius: var(--radius-pill);
+            font-family: var(--font-mono);
+            font-size: var(--fs-xs);
+            color: var(--color-text-muted);
+        }
+        .stat-pill.wins   { color: var(--color-success); background: var(--color-success-bg); }
+        .stat-pill.losses { color: var(--color-danger);  background: var(--color-danger-bg); }
+        .stat-pill.draws  { color: var(--color-info);    background: var(--color-info-bg); }
+
+        /* chess.com rating chips: one per active time control */
+        .rating-chips {
+            display: inline-flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 4px;
+        }
+        .rating-chip {
+            display: inline-flex;
+            align-items: stretch;
+            font-family: var(--font-mono);
+            font-size: var(--fs-xs);
+            border-radius: var(--radius-pill);
+            overflow: hidden;
+            line-height: 1;
+            border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+        }
+        .rating-chip .rating-mode {
+            padding: 3px 7px;
+            background: var(--color-bg-elev-3);
+            color: var(--color-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-size: 9px;
+            display: inline-flex;
+            align-items: center;
+        }
+        .rating-chip .rating-value {
+            padding: 3px 8px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+        }
+        .rating-chip.rating-rapid  .rating-value { color: #f0c040; background: rgba(240,192,64,0.10); }
+        .rating-chip.rating-blitz  .rating-value { color: #58a6ff; background: rgba(88,166,255,0.10); }
+        .rating-chip.rating-bullet .rating-value { color: #ff7b72; background: rgba(255,123,114,0.10); }
+        .rating-chip.rating-daily  .rating-value { color: #7ee787; background: rgba(126,231,135,0.10); }
+        .add-row {
+            display: grid;
+            grid-template-columns: 44px 1fr auto;
+            gap: var(--space-2);
+            align-items: center;
+            margin-top: var(--space-3);
+        }
+        @media (min-width: 480px) {
+            .add-row {
+                grid-template-columns: 44px 1fr 88px auto;
+            }
+        }
+        .avatar-input {
+            font-size: 22px !important;
+            text-align: center;
+            padding: 4px !important;
+        }
+        /* Avatar dropdown — looks like the other inputs in the form,
+           but renders the selected glyph at a larger size. */
+        .avatar-select {
+            font-size: 22px;
+            text-align: center;
+            padding: 4px 4px 4px 8px;
+            min-height: var(--tap-target);
+            background: var(--color-bg-elev-2);
+            color: var(--color-text);
+            border: 1px solid var(--color-border-strong);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            width: 100%;
+        }
+        .color-input {
+            -webkit-appearance: none;
+            appearance: none;
+            border: 1px solid var(--color-border-strong);
+            background: transparent;
+            width: 100%;
+            min-height: var(--tap-target);
+            padding: 4px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+        }
+        .color-input::-webkit-color-swatch-wrapper { padding: 0; }
+        .color-input::-webkit-color-swatch { border: 0; border-radius: var(--radius-sm); }
+        .empty-state {
+            padding: var(--space-6) var(--space-4);
+            text-align: center;
+            color: var(--color-text-muted);
+            font-size: var(--fs-sm);
+            background: var(--color-bg-elev-2);
+            border: 1px dashed var(--color-border-strong);
+            border-radius: var(--radius-lg);
+        }
+        .nav-row {
+            display: flex;
+            gap: var(--space-2);
+            margin: var(--space-4) 0 var(--space-2);
+        }
+        .nav-row .back-button { margin: 0; flex: 1; }
+        .toolbar {
+            display: flex;
+            gap: var(--space-2);
+            align-items: center;
+            margin-bottom: var(--space-3);
+            flex-wrap: wrap;
+        }
+        .toolbar .button { width: auto; flex: 0 1 auto; margin: 0; }
+        .feedback {
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: calc(env(safe-area-inset-bottom) + var(--space-4));
+            padding: 10px 18px;
+            background: var(--color-bg-elev-3);
+            color: var(--color-text);
+            border: 1px solid var(--color-border-strong);
+            border-radius: var(--radius-pill);
+            box-shadow: var(--shadow-md);
+            opacity: 0;
+            transition: opacity var(--duration-2) var(--easing);
+            pointer-events: none;
+            z-index: 2000;
+            font-size: var(--fs-sm);
+        }
+        .feedback.show { opacity: 1; }
+        .feedback.danger { color: var(--color-danger); border-color: var(--color-danger); }
+    </style>
+    <script src="./scripts/app.js"></script>
+</head>
+
+<body>
+    <main class="container">
+        <header class="app-header">
+            <a href="./index.html"
+               style="text-decoration:none; color:inherit;">
+                <h1 class="app-title">
+                    <span class="pc-wordmark">Priston<b>Chess</b></span>
+                    <span class="visually-hidden">PristonChess</span>
+                </h1>
+            </a>
+            <div class="app-status">
+                <span class="status-pill" id="modeStatusPill">Bereit</span>
+            </div>
+        </header>
+
+        <div class="settings-shell-header">
+            <h2>Spieler &amp; Rangliste</h2>
+            <span class="text-subtle text-muted">Profile + Stats</span>
+        </div>
+
+        <!-- LEADERBOARD ---------------------------------------------------- -->
+        <section class="settings-section">
+            <header class="section-header" onclick="toggleSection(this)">
+                <span class="section-icon">▾</span>
+                <h3>Rangliste</h3>
+            </header>
+            <div class="section-content expanded" id="leaderboardSection">
+                <div class="option-group pills" id="playersLeaderSort"
+                     style="margin-bottom: var(--space-3);">
+                    <button type="button" class="toggle-btn pill active" data-sort="wins">Siege</button>
+                    <button type="button" class="toggle-btn pill" data-sort="elo">ELO</button>
+                </div>
+                <ol class="leader-list" id="leaderboardList">
+                    <li class="empty-state">Lade…</li>
+                </ol>
+            </div>
+        </section>
+
+        <!-- ADD PLAYER ----------------------------------------------------- -->
+        <section class="settings-section">
+            <header class="section-header" onclick="toggleSection(this)">
+                <span class="section-icon">▸</span>
+                <h3>Spieler hinzufügen</h3>
+            </header>
+            <div class="section-content">
+                <p class="text-muted" style="font-size:var(--fs-sm); margin-top:0;">
+                    Name reicht — Avatar (Emoji) und Farbe sind optional.
+                    Statistiken werden für jeden Spieler einzeln gespeichert.
+                </p>
+                <form id="addForm" autocomplete="off">
+                    <div class="add-row">
+                        <select class="avatar-select" id="addAvatar" aria-label="Avatar"></select>
+                        <input id="addName" type="text" placeholder="Name"
+                               required maxlength="32" aria-label="Spielername" />
+                        <input class="color-input" id="addColor" type="color"
+                               value="#ff8a3d" aria-label="Farbe" />
+                        <button type="submit" class="button"
+                                style="margin:0; width:auto;">Hinzufügen</button>
+                    </div>
+                    <div style="margin-top:var(--space-2);">
+                        <input id="addChesscom" type="text"
+                               placeholder="chess.com Username (optional)"
+                               maxlength="32" autocomplete="off"
+                               style="font-family: var(--font-mono); font-size: var(--fs-sm);" />
+                        <p class="text-muted" style="font-size:var(--fs-xs); margin:4px 0 0;">
+                            Wenn gesetzt, wird die aktuelle ELO via chess.com
+                            API geholt und neben dem Namen angezeigt.
+                        </p>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- ALL PLAYERS ---------------------------------------------------- -->
+        <section class="settings-section">
+            <header class="section-header" onclick="toggleSection(this)">
+                <span class="section-icon">▾</span>
+                <h3>Alle Spieler</h3>
+            </header>
+            <div class="section-content expanded">
+                <div class="toolbar">
+                    <span class="text-muted" id="playerCount"
+                          style="font-size:var(--fs-sm);"></span>
+                    <span style="flex:1;"></span>
+                    <button class="button" id="refreshBtn"
+                            style="width:auto; background:transparent;
+                                   color:var(--color-text-muted);
+                                   border:1px solid var(--color-border-strong);">
+                        ↻ ELO aktualisieren
+                    </button>
+                    <button class="button" id="resetBtn"
+                            style="width:auto; background:transparent;
+                                   color:var(--color-text-muted);
+                                   border:1px solid var(--color-border-strong);">
+                        Auf Standard zurücksetzen
+                    </button>
+                </div>
+                <ul class="player-list" id="playerList">
+                    <li class="empty-state">Lade…</li>
+                </ul>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Edit player modal -->
+    <div id="editModal" class="modal-overlay">
+        <div class="modal-box">
+            <h3 style="margin-top:0;">Spieler bearbeiten</h3>
+            <div class="form-group">
+                <label>Avatar</label>
+                <select id="editAvatar" class="avatar-select"></select>
+            </div>
+            <div class="form-group">
+                <label>Name</label>
+                <input id="editName" type="text" maxlength="32" required />
+            </div>
+            <div class="form-group">
+                <label>Farbe</label>
+                <input id="editColor" type="color" class="color-input" />
+            </div>
+            <div class="form-group">
+                <label>chess.com Username</label>
+                <input id="editChesscom" type="text" maxlength="32"
+                       autocomplete="off"
+                       placeholder="(leer = keine ELO holen)"
+                       style="font-family: var(--font-mono);" />
+                <p class="text-muted" style="font-size:var(--fs-xs); margin:4px 0 0;">
+                    Bei Änderung wird die ELO frisch via chess.com API geholt.
+                </p>
+            </div>
+            <div class="modal-actions">
+                <button onclick="cancelEdit()" class="back-button"
+                        style="margin:0; flex:1;">Abbrechen</button>
+                <button onclick="confirmEdit()" class="button"
+                        style="margin:0; flex:1;">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="feedback" id="feedback"></div>
+
+    <script>
+        if (window.PC) PC.startWifiPill();
+
+        const API = './api/profiles';
+        let state = { active: '', profiles: [] };
+
+        // -------- Helpers ---------------------------------------------------
+        function toggleSection(headerEl) {
+            const content = headerEl.nextElementSibling;
+            const icon = headerEl.querySelector('.section-icon');
+            const open = content.classList.toggle('expanded');
+            if (icon) icon.textContent = open ? '▾' : '▸';
+        }
+
+        function flash(message, kind) {
+            const el = document.getElementById('feedback');
+            el.textContent = message;
+            el.classList.remove('danger');
+            if (kind === 'danger') el.classList.add('danger');
+            el.classList.add('show');
+            clearTimeout(flash._t);
+            flash._t = setTimeout(() => el.classList.remove('show'), 2200);
+        }
+
+        function escape(s) {
+            return (s || '').replace(/[&<>"']/g, c =>
+                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        function score(p) {
+            const w = (p.stats && p.stats.wins)   || 0;
+            const l = (p.stats && p.stats.losses) || 0;
+            const d = (p.stats && p.stats.draws)  || 0;
+            return { w, l, d, total: w + l + d };
+        }
+
+        // chess.com ratings as chip row. Falls back to legacy p.elo (rapid)
+        // when the structured `ratings` object isn't present yet.
+        function ratingChips(p) {
+            const r = p.ratings || {};
+            const items = [
+                ['rapid',  r.rapid  || (p.elo > 0 ? p.elo : 0)],
+                ['blitz',  r.blitz  || 0],
+                ['bullet', r.bullet || 0],
+                ['daily',  r.daily  || 0],
+            ].filter(([, v]) => v > 0);
+            if (items.length === 0) return '';
+            return items.map(([k, v]) =>
+                `<span class="rating-chip rating-${k}" title="chess.com ${k}">`
+              + `<span class="rating-mode">${k}</span>`
+              + `<span class="rating-value">${v}</span>`
+              + `</span>`
+            ).join('');
+        }
+
+        // -------- API ------------------------------------------------------
+        async function fetchProfiles() {
+            try {
+                const r = await fetch(API, { cache: 'no-store' });
+                if (!r.ok) throw new Error(r.statusText);
+                const j = await r.json();
+                state = { active: j.active || '', profiles: j.profiles || [] };
+                render();
+            } catch (e) {
+                flash('Profile konnten nicht geladen werden', 'danger');
+            }
+        }
+
+        async function postAction(body) {
+            // Backend expects x-www-form-urlencoded args (action/id/name/...).
+            const params = new URLSearchParams();
+            for (const k in body) {
+                if (body[k] != null) params.append(k, body[k]);
+            }
+            const r = await fetch(API, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params.toString(),
+            });
+            if (!r.ok) throw new Error(await r.text());
+            const j = await r.json();
+            state = { active: j.active || '', profiles: j.profiles || [] };
+            render();
+        }
+
+        // -------- Render ---------------------------------------------------
+        function render() {
+            renderLeaderboard();
+            renderPlayerList();
+        }
+
+        function _primaryRating(p) {
+            const r = p.ratings || {};
+            return (r.rapid  > 0) ? r.rapid  :
+                   (r.blitz  > 0) ? r.blitz  :
+                   (r.bullet > 0) ? r.bullet :
+                   (r.daily  > 0) ? r.daily  :
+                   (p.elo    > 0) ? p.elo    : 0;
+        }
+
+        let _playerSort = localStorage.getItem('pcLeaderSort') || 'wins';
+
+        function renderLeaderboard() {
+            const list = document.getElementById('leaderboardList');
+            const ranked = [...state.profiles]
+                .map(p => ({ p, s: score(p) }))
+                .sort((a, b) => {
+                    if (_playerSort === 'elo') {
+                        const ea = _primaryRating(a.p), eb = _primaryRating(b.p);
+                        return eb - ea || a.p.name.localeCompare(b.p.name);
+                    }
+                    return b.s.w - a.s.w
+                        || a.s.l - b.s.l
+                        || b.s.d - a.s.d
+                        || a.p.name.localeCompare(b.p.name);
+                });
+
+            if (ranked.length === 0) {
+                list.innerHTML = '<li class="empty-state">Noch keine Spieler.</li>';
+                return;
+            }
+
+            list.innerHTML = ranked.map(({ p, s }, i) => {
+                const rankClass = i === 0 ? 'gold'
+                                 : i === 1 ? 'silver'
+                                 : i === 2 ? 'bronze' : '';
+                const avatarBg = p.color ? `background:${escape(p.color)}26;color:${escape(p.color)};` : '';
+                const chips = ratingChips(p);
+                return `
+                    <li class="player-row">
+                        <span class="leader-rank ${rankClass}">${i + 1}</span>
+                        <span class="player-avatar" style="${avatarBg}">${escape(p.avatar || '♟')}</span>
+                        <span class="player-name">
+                            <strong>${escape(p.name)}</strong>
+                            <span class="player-stats">
+                                <span class="stat-pill wins">${s.w} S</span>
+                                <span class="stat-pill losses">${s.l} N</span>
+                                <span class="stat-pill draws">${s.d} R</span>
+                            </span>
+                            ${chips ? `<span class="rating-chips">${chips}</span>` : ''}
+                        </span>
+                    </li>
+                `;
+            }).join('');
+        }
+
+        function renderPlayerList() {
+            const list = document.getElementById('playerList');
+            const count = document.getElementById('playerCount');
+            count.textContent = state.profiles.length === 1
+                ? '1 Spieler'
+                : `${state.profiles.length} Spieler`;
+
+            if (state.profiles.length === 0) {
+                list.innerHTML = '<li class="empty-state">Noch keine Spieler. Lege oben einen an.</li>';
+                return;
+            }
+
+            list.innerHTML = state.profiles.map(p => {
+                const s = score(p);
+                const isActive = p.id === state.active;
+                const avatarBg = p.color
+                    ? `background:${escape(p.color)}26;color:${escape(p.color)};`
+                    : '';
+                const chips = ratingChips(p);
+                const handle = p.chesscom
+                    ? `<span style="font-family:var(--font-mono); font-size:var(--fs-xs); color:var(--color-text-subtle);"> · chess.com/${escape(p.chesscom)}</span>`
+                    : '';
+                return `
+                    <li class="player-row ${isActive ? 'active' : ''}" data-id="${escape(p.id)}">
+                        <span class="player-avatar" style="${avatarBg}">${escape(p.avatar || '♟')}</span>
+                        <span class="player-name">
+                            <strong>${escape(p.name)}</strong>
+                            <span class="player-stats">${s.w}-${s.l}-${s.d} &middot; ${s.total} Partien${handle}</span>
+                            ${chips ? `<span class="rating-chips">${chips}</span>` : ''}
+                        </span>
+                        <span class="player-actions">
+                            <button class="icon-btn" title="Bearbeiten"
+                                    onclick="editPlayer('${escape(p.id)}')">✎</button>
+                            <button class="icon-btn danger" title="Löschen"
+                                    onclick="deletePlayer('${escape(p.id)}')">×</button>
+                        </span>
+                    </li>
+                `;
+            }).join('');
+        }
+
+        // -------- Actions --------------------------------------------------
+        async function deletePlayer(id) {
+            const p = state.profiles.find(x => x.id === id);
+            if (!p) return;
+            if (!confirm(`«${p.name}» wirklich löschen? Statistiken gehen verloren.`)) return;
+            try {
+                await postAction({ action: 'delete', id });
+                flash('Gelöscht');
+            } catch (e) {
+                flash('Löschen fehlgeschlagen', 'danger');
+            }
+        }
+
+        let _editingId = null;
+
+        function editPlayer(id) {
+            const p = state.profiles.find(x => x.id === id);
+            if (!p) return;
+            _editingId = id;
+            populateAvatarSelect('editAvatar', p.avatar || '♟');
+            document.getElementById('editName').value     = p.name    || '';
+            document.getElementById('editColor').value    = p.color   || '#ff8a3d';
+            document.getElementById('editChesscom').value = p.chesscom || '';
+            document.getElementById('editModal').classList.add('visible');
+        }
+
+        function cancelEdit() {
+            _editingId = null;
+            document.getElementById('editModal').classList.remove('visible');
+        }
+
+        async function confirmEdit() {
+            if (!_editingId) return cancelEdit();
+            const id       = _editingId;
+            const name     = document.getElementById('editName').value.trim();
+            const avatar   = document.getElementById('editAvatar').value.trim() || '♟';
+            const color    = document.getElementById('editColor').value || '#ff8a3d';
+            const chesscom = document.getElementById('editChesscom').value.trim();
+            if (!name) { flash('Name darf nicht leer sein', 'danger'); return; }
+            try {
+                await postAction({ action: 'update', id, name, avatar, color, chesscom });
+                cancelEdit();
+                flash(chesscom ? 'Gespeichert — ELO wird geholt' : 'Gespeichert');
+            } catch (e) {
+                flash('Aktualisierung fehlgeschlagen', 'danger');
+            }
+        }
+
+        document.getElementById('addForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name     = document.getElementById('addName').value.trim();
+            const avatar   = document.getElementById('addAvatar').value.trim() || '♟';
+            const color    = document.getElementById('addColor').value || '#ff8a3d';
+            const chesscom = document.getElementById('addChesscom').value.trim();
+            if (!name) return;
+            try {
+                await postAction({ action: 'create', name, avatar, color, chesscom });
+                document.getElementById('addName').value = '';
+                document.getElementById('addAvatar').value = '♟';
+                document.getElementById('addChesscom').value = '';
+                flash(chesscom ? `«${name}» angelegt — ELO wird geholt`
+                                : `«${name}» angelegt`);
+            } catch (err) {
+                flash('Anlegen fehlgeschlagen (Name vergeben?)', 'danger');
+            }
+        });
+
+        document.getElementById('refreshBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('refreshBtn');
+            const orig = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '… Holt von chess.com';
+            try {
+                const r = await fetch('./api/profiles/refresh', { method: 'POST' });
+                if (!r.ok) throw new Error();
+                const j = await r.json();
+                flash(`ELO: ${j.elo} Profile aktualisiert`);
+                await fetchProfiles();
+            } catch (e) {
+                flash('Aktualisierung fehlgeschlagen', 'danger');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = orig;
+            }
+        });
+
+        document.getElementById('resetBtn').addEventListener('click', async () => {
+            if (!confirm('Alle Spieler löschen und auf die 4 Standard-Profile zurücksetzen?')) return;
+            try {
+                await postAction({ action: 'reset' });
+                flash('Zurückgesetzt');
+            } catch (e) {
+                flash('Reset fehlgeschlagen', 'danger');
+            }
+        });
+
+        // -------- Sort pills (leaderboard order) ---------------------------
+        document.querySelectorAll('#playersLeaderSort .toggle-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.sort === _playerSort);
+            btn.addEventListener('click', () => {
+                _playerSort = btn.dataset.sort;
+                localStorage.setItem('pcLeaderSort', _playerSort);
+                document.querySelectorAll('#playersLeaderSort .toggle-btn')
+                    .forEach(b => b.classList.toggle('active',
+                                                     b.dataset.sort === _playerSort));
+                renderLeaderboard();
+            });
+        });
+
+        // -------- Avatar picker --------------------------------------------
+        // Curated list of glyphs that render reliably on most devices. The
+        // edit modal additionally injects the profile's current avatar at
+        // the top of the list if it isn't already in here (so existing
+        // legacy avatars survive the migration to <select>).
+        const AVATAR_CHOICES = [
+            '♟','♞','♝','♜','♛','♚',
+            '♙','♘','♗','♖','♕','♔',
+            '🤴','👸','🧙','🦁','🐉','🦅',
+            '🤖','⚔','🔥','⭐','🎯','🏆'
+        ];
+        function populateAvatarSelect(selectId, current) {
+            const sel = document.getElementById(selectId);
+            if (!sel) return;
+            const list = AVATAR_CHOICES.slice();
+            if (current && !list.includes(current)) list.unshift(current);
+            sel.innerHTML = list.map(a =>
+                `<option value="${escape(a)}">${escape(a)}</option>`).join('');
+            sel.value = current || list[0];
+        }
+        // Default-populate the add form once on load.
+        populateAvatarSelect('addAvatar', '♟');
+
+        // -------- Init -----------------------------------------------------
+        fetchProfiles();
+        // Refresh leaderboard periodically so finished games show up live.
+        setInterval(fetchProfiles, 15000);
+    </script>
+</body>
+
+</html>

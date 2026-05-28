@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0f1115">
+    <title>PristonChess — Spielmodus</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+    <link rel="stylesheet" href="./css/styles.css">
+    <style>
+        /* "Erweitert" disclosure — keeps dev-only modes (Sensor-Test,
+           Simulation) hidden until explicitly expanded. */
+        .advanced-modes {
+            margin-top: var(--space-4);
+            border-top: 1px dashed var(--color-border);
+            padding-top: var(--space-4);
+        }
+        .advanced-modes summary {
+            list-style: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: var(--space-2) var(--space-3);
+            color: var(--color-text-muted);
+            font-size: var(--fs-sm);
+            border-radius: var(--radius-md);
+            transition: background var(--duration-1) var(--easing);
+        }
+        .advanced-modes summary::-webkit-details-marker { display: none; }
+        .advanced-modes summary:hover { background: var(--color-bg-elev-2); }
+        .advanced-modes summary::after {
+            content: "›";
+            margin-left: auto;
+            transition: transform var(--duration-1) var(--easing);
+            font-size: var(--fs-md);
+        }
+        .advanced-modes[open] summary::after { transform: rotate(90deg); }
+        .advanced-modes .adv-icon { font-size: var(--fs-md); }
+        .advanced-modes .adv-label {
+            font-weight: 600;
+            color: var(--color-text);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-size: var(--fs-xs);
+        }
+        .advanced-modes .adv-hint {
+            color: var(--color-text-subtle);
+            font-size: var(--fs-xs);
+        }
+        .advanced-modes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: var(--space-2);
+            margin-top: var(--space-3);
+        }
+        .adv-mode-tile {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+            padding: var(--space-3) var(--space-4);
+            background: var(--color-bg-elev-2);
+            border: 1px dashed var(--color-border);
+            border-radius: var(--radius-md);
+            color: var(--color-text);
+            cursor: pointer;
+            text-align: left;
+            transition: background var(--duration-1) var(--easing),
+                        border-color var(--duration-1) var(--easing);
+        }
+        .adv-mode-tile:hover {
+            background: var(--color-bg-elev-3);
+            border-color: var(--color-text-subtle);
+        }
+        .adv-mode-tile .adv-mode-title {
+            font-weight: 600;
+            font-size: var(--fs-sm);
+        }
+        .adv-mode-tile .adv-mode-desc {
+            font-size: 10px;
+            color: var(--color-text-muted);
+        }
+
+        /* Player selection tiles in the HvH modal — full-width radio
+           buttons styled like the toggle-btn group. Two columns when
+           there's enough room. */
+        .player-radio-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: var(--space-2);
+        }
+        .player-radio-tile {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: 8px 10px;
+            background: var(--color-bg-elev-2);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md, 8px);
+            cursor: pointer;
+            user-select: none;
+            transition: background 120ms, border-color 120ms;
+        }
+        .player-radio-tile:hover {
+            background: var(--color-bg-elev-3);
+        }
+        .player-radio-tile input[type="radio"] {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .player-radio-tile.active {
+            background: var(--color-accent-bg, rgba(240,192,64,0.12));
+            border-color: var(--color-accent, #f0c040);
+        }
+        .player-radio-tile .pr-avatar {
+            width: 28px; height: 28px;
+            display: inline-flex;
+            align-items: center; justify-content: center;
+            font-size: 16px;
+            border-radius: 50%;
+            background: var(--color-bg-elev-3);
+            flex-shrink: 0;
+        }
+        .player-radio-tile .pr-text {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            line-height: 1.15;
+        }
+        .player-radio-tile .pr-name {
+            font-weight: 600;
+            font-size: var(--fs-sm);
+            color: var(--color-text);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .player-radio-tile .pr-meta {
+            font-size: 10px;
+            color: var(--color-text-muted);
+            font-family: var(--font-mono);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .player-radio-tile.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+    </style>
+    <script src="./scripts/app.js"></script>
+</head>
+
+<body>
+    <main class="container">
+        <header class="app-header">
+            <a href="./index.html"
+               style="text-decoration:none; color:inherit;">
+                <h1 class="app-title">
+                    <span class="pc-wordmark">Priston<b>Chess</b></span>
+                    <span class="visually-hidden">PristonChess</span>
+                </h1>
+            </a>
+            <div class="app-status">
+                <span class="status-pill" id="modeStatusPill">Bereit</span>
+            </div>
+        </header>
+
+        <div class="settings-shell-header">
+            <h2>Spielmodus</h2>
+            <span class="text-subtle text-muted">Wähle einen Modus</span>
+        </div>
+        <div class="game-grid">
+            <div class="game-mode available mode-1" onclick="showHvHModal()">
+                <h3>Lokales Spiel</h3>
+                <p>2 Spieler vor Ort</p>
+                <p>Mit Stats &amp; Rangliste</p>
+            </div>
+            <div class="game-mode available mode-2" onclick="showBotModal()">
+                <h3>Bot</h3>
+                <p>Spielen gegen Stockfish</p>
+                <p>4 Schwierigkeitsstufen</p>
+            </div>
+            <div class="game-mode available mode-3" onclick="showLichessModal()">
+                <h3>Lichess</h3>
+                <p>Online-Spiel</p>
+                <p>auf dem echten Brett</p>
+            </div>
+        </div>
+
+        <!-- Erweitert: Dev/QA-Modi (Sensor-Test, Simulation) — kollabiert. -->
+        <details class="advanced-modes">
+            <summary>
+                <span class="adv-icon">⚙</span>
+                <span class="adv-label">Erweitert</span>
+                <span class="adv-hint">Sensor-Test &amp; Simulation</span>
+            </summary>
+            <div class="advanced-modes-grid">
+                <button type="button" class="adv-mode-tile" onclick="selectGame(4)">
+                    <span class="adv-mode-title">Sensor-Test</span>
+                    <span class="adv-mode-desc">Hall-Sensoren am physischen Brett prüfen</span>
+                </button>
+                <button type="button" class="adv-mode-tile" onclick="selectGame(5)">
+                    <span class="adv-mode-title">Simulation (Auto)</span>
+                    <span class="adv-mode-desc">Scripted-Partie läuft automatisch ab</span>
+                </button>
+                <button type="button" class="adv-mode-tile" onclick="selectGame(5, {manual:true})">
+                    <span class="adv-mode-title">Simulation (Manuell)</span>
+                    <span class="adv-mode-desc">Figuren selbst im Web ziehen — LEDs spiegeln</span>
+                </button>
+            </div>
+        </details>
+
+        <!-- Human vs Human modal (player + time + color selection) -->
+        <div id="hvhModal" class="modal-overlay">
+            <div class="modal-box">
+                <h3 style="margin-top:0;">Neues Spiel</h3>
+
+                <div class="form-group">
+                    <label>Spieler 1</label>
+                    <div class="player-radio-grid" id="hvhP1"></div>
+                </div>
+                <div class="form-group">
+                    <label>Spieler 2</label>
+                    <div class="player-radio-grid" id="hvhP2"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Zeit pro Spieler</label>
+                    <div class="option-group pills" id="hvhTime">
+                        <button type="button" class="toggle-btn pill" data-ms="60000">1m</button>
+                        <button type="button" class="toggle-btn pill" data-ms="180000">3m</button>
+                        <button type="button" class="toggle-btn pill" data-ms="300000">5m</button>
+                        <button type="button" class="toggle-btn pill active" data-ms="600000">10m</button>
+                        <button type="button" class="toggle-btn pill" data-ms="900000">15m</button>
+                        <button type="button" class="toggle-btn pill" data-ms="1800000">30m</button>
+                        <button type="button" class="toggle-btn pill" data-ms="0">∞</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Farbverteilung</label>
+                    <div class="option-group pills" id="hvhColor">
+                        <button type="button" class="toggle-btn pill" data-color="white">P1 weiss</button>
+                        <button type="button" class="toggle-btn pill" data-color="black">P1 schwarz</button>
+                        <button type="button" class="toggle-btn pill active" data-color="random">Zufall</button>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" onclick="cancelHvHModal()"
+                            class="back-button" style="margin:0; flex:1;">
+                        Abbrechen
+                    </button>
+                    <button type="button" onclick="startHvHFromModal()"
+                            class="button" style="margin:0; flex:1;">
+                        Start
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chess Bot modal -->
+        <div id="botModal" class="modal-overlay">
+            <div class="modal-box">
+                <h3 style="margin-top:0;">Gegen Bot spielen</h3>
+
+                <div class="form-group">
+                    <label>Spieler (für Stats)</label>
+                    <select id="botPlayerProfile"></select>
+                </div>
+
+                <div class="form-group">
+                    <label>Schwierigkeit</label>
+                    <div class="option-group" id="botDiff">
+                        <button type="button" class="toggle-btn" data-d="1">Einfach</button>
+                        <button type="button" class="toggle-btn active" data-d="2">Mittel</button>
+                        <button type="button" class="toggle-btn" data-d="3">Schwer</button>
+                        <button type="button" class="toggle-btn" data-d="4">Experte</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Deine Farbe</label>
+                    <div class="option-group" id="botColor">
+                        <button type="button" class="toggle-btn active" data-color="white">Weiss</button>
+                        <button type="button" class="toggle-btn" data-color="black">Schwarz</button>
+                        <button type="button" class="toggle-btn" data-color="random">Zufall</button>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" onclick="cancelBotModal()"
+                            class="back-button" style="margin:0; flex:1;">Abbrechen</button>
+                    <button type="button" onclick="startBotFromModal()"
+                            class="button" style="margin:0; flex:1;">Start</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lichess modal -->
+        <div id="lichessModal" class="modal-overlay">
+            <div class="modal-box">
+                <h3 style="margin-top:0;">Lichess starten</h3>
+                <p class="text-muted" style="font-size:var(--fs-sm); margin-top:0;">
+                    Verbindet zu Lichess.org. Der API-Token muss vorher
+                    in den Einstellungen hinterlegt sein.
+                </p>
+                <div class="modal-actions">
+                    <button type="button" onclick="cancelLichessModal()"
+                            class="back-button" style="margin:0; flex:1;">Abbrechen</button>
+                    <button type="button" onclick="startLichessFromModal()"
+                            class="button" style="margin:0; flex:1;">Verbinden</button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+    <script>
+        if (window.PC) PC.startWifiPill();
+
+        let profilesCache = null;
+
+        // Read/write helpers for either a <select> or a .player-radio-grid:
+        // both targets get the same `value`-ish API so the rest of the modal
+        // code stays unchanged.
+        function _gridValue(grid) {
+            const sel = grid.querySelector('input[type="radio"]:checked');
+            return sel ? sel.value : '';
+        }
+        function _setGridValue(grid, id) {
+            const r = grid.querySelector('input[type="radio"][value="' + id + '"]');
+            if (!r) return;
+            r.checked = true;
+            grid.querySelectorAll('.player-radio-tile').forEach(t =>
+                t.classList.toggle('active', t.contains(r)));
+        }
+        function getProfileSelection(elId) {
+            const el = document.getElementById(elId);
+            if (!el) return '';
+            if (el.classList.contains('player-radio-grid')) return _gridValue(el);
+            return el.value || '';
+        }
+
+        function loadProfiles(targetIds) {
+            return fetch('./api/profiles')
+                .then(r => r.ok ? r.json() : null)
+                .then(json => {
+                    profilesCache = json;
+                    const list = (json && json.profiles) ? json.profiles : [];
+                    const primaryRating = (p) => {
+                        const r = p.ratings || {};
+                        return (r.rapid  > 0) ? ['rapid',  r.rapid]  :
+                               (r.blitz  > 0) ? ['blitz',  r.blitz]  :
+                               (r.bullet > 0) ? ['bullet', r.bullet] :
+                               (r.daily  > 0) ? ['daily',  r.daily]  :
+                               (p.elo    > 0) ? ['rapid',  p.elo]    : null;
+                    };
+                    const fillSelect = (sel, idx) => {
+                        sel.innerHTML = '<option value="">(kein Profil)</option>' +
+                            list.map(p => {
+                                const pr = primaryRating(p);
+                                const eloLabel = pr
+                                    ? '  [' + pr[0].toUpperCase() + ' ' + pr[1] + ']'
+                                    : '';
+                                return '<option value="' + p.id + '">' +
+                                    (p.avatar || '♟') + '  ' + p.name + eloLabel + ' · ' +
+                                    ((p.stats && p.stats.wins)   || 0) + '/' +
+                                    ((p.stats && p.stats.losses) || 0) + '/' +
+                                    ((p.stats && p.stats.draws)  || 0) +
+                                    '</option>';
+                            }).join('');
+                        if (list.length > idx) sel.value = list[idx].id;
+                    };
+                    const escAttr = (s) => String(s)
+                        .replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+                    const escText = (s) => String(s)
+                        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                    const fillGrid = (grid, idx) => {
+                        const name = grid.id + '_radio';
+                        grid.innerHTML = list.map((p, i) => {
+                            const pr = primaryRating(p);
+                            const eloChip = pr
+                                ? '<span class="pr-meta">' +
+                                    escText(pr[0]) + ' ' + pr[1] +
+                                  '</span>'
+                                : '';
+                            return (
+                                '<label class="player-radio-tile' +
+                                    (i === idx ? ' active' : '') + '">' +
+                                    '<input type="radio" name="' + escAttr(name) +
+                                        '" value="' + escAttr(p.id) + '"' +
+                                        (i === idx ? ' checked' : '') + '>' +
+                                    '<span class="pr-avatar">' +
+                                        escText(p.avatar || '♟') + '</span>' +
+                                    '<span class="pr-text">' +
+                                        '<span class="pr-name">' +
+                                            escText(p.name) + '</span>' +
+                                        eloChip +
+                                    '</span>' +
+                                '</label>'
+                            );
+                        }).join('');
+                        grid.querySelectorAll('input[type="radio"]')
+                            .forEach(r => r.addEventListener('change', () => {
+                                grid.querySelectorAll('.player-radio-tile')
+                                    .forEach(t => t.classList.toggle('active',
+                                                                     t.contains(r) && r.checked));
+                            }));
+                    };
+                    (targetIds || [['hvhP1', 0], ['hvhP2', 1]]).forEach(([id, i]) => {
+                        const el = document.getElementById(id);
+                        if (!el) return;
+                        if (el.classList.contains('player-radio-grid')) fillGrid(el, i);
+                        else                                            fillSelect(el, i);
+                    });
+                })
+                .catch(() => {});
+        }
+
+        // Toggle-group helpers — single selection within each group.
+        function wireToggleGroup(containerId) {
+            document.querySelectorAll('#' + containerId + ' .toggle-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('#' + containerId + ' .toggle-btn')
+                        .forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                });
+            });
+        }
+        wireToggleGroup('hvhTime');
+        wireToggleGroup('hvhColor');
+        wireToggleGroup('botDiff');
+        wireToggleGroup('botColor');
+
+        function showHvHModal() {
+            loadProfiles([['hvhP1', 0], ['hvhP2', 1]]);
+            document.getElementById('hvhModal').classList.add('visible');
+        }
+
+        function cancelHvHModal() {
+            document.getElementById('hvhModal').classList.remove('visible');
+        }
+
+        function showBotModal() {
+            loadProfiles([['botPlayerProfile', 0]]);
+            document.getElementById('botModal').classList.add('visible');
+        }
+
+        function cancelBotModal() {
+            document.getElementById('botModal').classList.remove('visible');
+        }
+
+        function startBotFromModal() {
+            const diff = document.querySelector('#botDiff .toggle-btn.active')?.dataset.d || '2';
+            const choice = document.querySelector('#botColor .toggle-btn.active')?.dataset.color || 'white';
+            let playerColor = choice;
+            if (choice === 'random') playerColor = Math.random() < 0.5 ? 'white' : 'black';
+            cancelBotModal();
+            selectGame(2, { playerColor, difficulty: diff });
+        }
+
+        function showLichessModal() {
+            document.getElementById('lichessModal').classList.add('visible');
+        }
+
+        function cancelLichessModal() {
+            document.getElementById('lichessModal').classList.remove('visible');
+        }
+
+        function startLichessFromModal() {
+            cancelLichessModal();
+            selectGame(3);
+        }
+
+        function startHvHFromModal() {
+            const p1 = getProfileSelection('hvhP1');
+            const p2 = getProfileSelection('hvhP2');
+            if (p1 && p2 && p1 === p2) {
+                alert('Spieler 1 und Spieler 2 müssen unterschiedlich sein.');
+                return;
+            }
+            const timeMs  = parseInt(
+                document.querySelector('#hvhTime .toggle-btn.active')
+                    ?.dataset.ms || '600000', 10);
+            const choice = document.querySelector('#hvhColor .toggle-btn.active')
+                            ?.dataset.color || 'random';
+
+            let whiteId = p1, blackId = p2;
+            if (choice === 'black') {
+                whiteId = p2; blackId = p1;
+            } else if (choice === 'random') {
+                if (Math.random() < 0.5) { whiteId = p1; blackId = p2; }
+                else                     { whiteId = p2; blackId = p1; }
+            }
+
+            cancelHvHModal();
+            selectGame(1, { whiteId, blackId, timeMs });
+        }
+
+        function showBotConfig() {
+            document.getElementById('botConfigPanel').classList.add('visible');
+        }
+
+        function hideBotConfig() {
+            document.getElementById('botConfigPanel').classList.remove('visible');
+        }
+
+        function selectGame(mode, extra) {
+            if (mode === 1 || mode === 2 || mode === 3 || mode === 4 || mode === 5) {
+                requestBody = 'gamemode=' + mode;
+                if (mode === 2 && extra) {
+                    requestBody += '&playerColor=' + encodeURIComponent(extra.playerColor || 'white');
+                    requestBody += '&difficulty='  + encodeURIComponent(extra.difficulty  || '2');
+                }
+                if (mode === 1 && extra) {
+                    if (extra.whiteId) requestBody += '&whiteId=' + encodeURIComponent(extra.whiteId);
+                    if (extra.blackId) requestBody += '&blackId=' + encodeURIComponent(extra.blackId);
+                    if (extra.timeMs != null) requestBody += '&timeMs=' + encodeURIComponent(extra.timeMs);
+                }
+                if (mode === 5 && extra && extra.manual) requestBody += '&simManual=1';
+                fetch('./gameselect', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: requestBody
+                }).then(response => {
+                    if (!response.ok) {
+                        if (mode === 3) {
+                            alert('Please configure your Lichess API token in the Home page settings first.');
+                        } else {
+                            alert('Failed to select game mode. Please try again.');
+                        }
+                        return;
+                    }
+                    return response.text();
+                }).then(data => {
+                    // Don't redirect for sensor test (mode 4) or simulation (mode 5)
+                    // Auto-open the board view for any started game OR
+                    // simulation. Sensor-Test (mode 4) keeps its own UX
+                    // path — no automatic redirect since there's no live
+                    // chess position to watch.
+                    if (data && mode !== 4)
+                        window.location.href = "./board.html";
+                }).catch(error => {
+                    console.error('Error:', error);
+                    alert('Failed to select game mode. Please try again.');
+                });
+            } else {
+                alert('This game mode doesn\'t exist!');
+            }
+        }
+    </script>
+</body>
+
+</html>

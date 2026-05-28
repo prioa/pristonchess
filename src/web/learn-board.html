@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0f1115">
+    <title>PristonChess — Üben</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+    <link rel="stylesheet" href="./css/styles.css">
+    <link rel="stylesheet" href="./css/chessboard-1.0.0.min.css">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background: var(--color-bg, #0f1115);
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100dvh;
+            overflow: hidden;
+        }
+
+        /* ---- Top app bar ---------------------------------------------- */
+        .lb-app-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: var(--space-3);
+            padding: var(--space-3) var(--space-4);
+            border-bottom: 1px solid var(--color-border);
+            flex-shrink: 0;
+        }
+        .lb-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            color: inherit;
+        }
+        .lb-brand img {
+            width: 32px; height: 32px;
+            border-radius: 6px;
+        }
+        .lb-brand-text {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.1;
+        }
+        .lb-brand-text .lb-brand-label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--color-text-muted);
+        }
+        .lb-brand-text .lb-brand-name {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--color-text);
+        }
+        .lb-app-bar .status-pill {
+            font-size: 0.7rem;
+        }
+
+        /* ---- Main shell ------------------------------------------------ */
+        .lb-shell {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: var(--space-3);
+            gap: var(--space-3);
+            min-height: 0;
+            max-width: 720px;
+            width: 100%;
+            margin: 0 auto;
+            box-sizing: border-box;
+        }
+
+        /* ---- Lesson card: name, level, color, progress, next move ----- */
+        .lb-lesson-card {
+            background: linear-gradient(180deg,
+                rgba(76,175,80,0.10),
+                rgba(76,175,80,0.02));
+            border: 1px solid rgba(76,175,80,0.35);
+            border-radius: var(--radius-lg);
+            padding: var(--space-3) var(--space-4);
+            flex-shrink: 0;
+        }
+        .lb-title-row {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            margin-bottom: 8px;
+        }
+        .lb-title-row h2 {
+            margin: 0; flex: 1; min-width: 0;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--color-text);
+            line-height: 1.2;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .lb-chip {
+            padding: 3px 9px;
+            border-radius: var(--radius-pill, 99px);
+            font-size: 0.62rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            background: rgba(76,175,80,0.18);
+            color: #a5d6a7;
+            border: 1px solid rgba(76,175,80,0.4);
+            flex-shrink: 0;
+            line-height: 1.4;
+        }
+        .lb-chip.color-w {
+            background: rgba(245,245,245,0.12);
+            color: #f5f5f5;
+            border-color: rgba(245,245,245,0.3);
+        }
+        .lb-chip.color-b {
+            background: rgba(30,30,30,0.6);
+            color: #ddd;
+            border-color: rgba(120,120,120,0.4);
+        }
+
+        .lb-progress-row {
+            display: flex; align-items: center; gap: 10px;
+            margin: 10px 0 12px;
+        }
+        .lb-progress-bar {
+            flex: 1; height: 6px;
+            border-radius: 3px;
+            background: rgba(255,255,255,0.07);
+            overflow: hidden;
+        }
+        .lb-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4caf50, #81c784);
+            width: 0%;
+            transition: width 240ms ease;
+        }
+        .lb-counter {
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            color: var(--color-text-muted);
+            white-space: nowrap;
+        }
+
+        .lb-hint {
+            display: flex; align-items: center; gap: 10px;
+            flex-wrap: wrap;
+        }
+        .lb-hint-who {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            background: rgba(240,192,64,0.15);
+            color: #f0c040;
+            border: 1px solid rgba(240,192,64,0.35);
+            white-space: nowrap;
+        }
+        .lb-hint-who.opponent {
+            background: rgba(180,140,255,0.12);
+            color: #c4b5ff;
+            border-color: rgba(180,140,255,0.35);
+        }
+        .lb-hint-who.done {
+            background: rgba(76,175,80,0.18);
+            color: #c8e6c9;
+            border-color: rgba(76,175,80,0.5);
+        }
+        .lb-hint-move {
+            font-family: var(--font-mono);
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: var(--color-text);
+            letter-spacing: 0.02em;
+        }
+        .lb-hint-mistakes {
+            margin-left: auto;
+            color: #ef9a9a;
+            font-size: 0.78rem;
+            font-family: var(--font-mono);
+        }
+
+        /* ---- Board area ------------------------------------------------ */
+        .lb-board-area {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 0;
+            padding: 0 var(--space-2);
+        }
+        #board {
+            width: 100%;
+            max-width: min(72vh, 560px);
+            aspect-ratio: 1 / 1;
+        }
+
+        /* ---- Action buttons -------------------------------------------- */
+        .lb-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-3);
+            flex-shrink: 0;
+        }
+        .lb-actions button {
+            padding: 14px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--color-border);
+            cursor: pointer;
+            transition: background 140ms, border-color 140ms, transform 140ms;
+            font-family: inherit;
+        }
+        .lb-actions button:hover {
+            transform: translateY(-1px);
+        }
+        .lb-actions button.restart {
+            background: rgba(76,175,80,0.12);
+            border-color: rgba(76,175,80,0.5);
+            color: #c8e6c9;
+        }
+        .lb-actions button.restart:hover {
+            background: rgba(76,175,80,0.22);
+        }
+        .lb-actions button.leave {
+            background: var(--color-bg-elev-2);
+            color: var(--color-text-muted);
+        }
+        .lb-actions button.leave:hover {
+            background: var(--color-bg-elev-3);
+            color: var(--color-text);
+            border-color: var(--color-text-subtle);
+        }
+
+        /* ---- Completion overlay ---------------------------------------- */
+        #completionOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.88);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: var(--space-3);
+            padding: var(--space-4);
+            text-align: center;
+        }
+        #completionOverlay.visible { display: flex; }
+        #completionOverlay .co-icon {
+            font-size: 72px;
+            line-height: 1;
+        }
+        #completionOverlay .co-title {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--color-text);
+        }
+        #completionOverlay .co-sub {
+            color: var(--color-text-muted);
+            max-width: 32ch;
+        }
+        #completionOverlay .co-actions {
+            display: flex; gap: var(--space-3);
+            margin-top: var(--space-3);
+        }
+        #completionOverlay button {
+            padding: 12px 22px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--color-border);
+            cursor: pointer;
+            font-family: inherit;
+        }
+        #completionOverlay button.primary {
+            background: rgba(76,175,80,0.18);
+            border-color: rgba(76,175,80,0.6);
+            color: #c8e6c9;
+        }
+        #completionOverlay button.secondary {
+            background: var(--color-bg-elev-2);
+            color: var(--color-text);
+        }
+    </style>
+    <script src="./scripts/app.js"></script>
+</head>
+
+<body>
+    <header class="lb-app-bar">
+        <a href="./learn.html" class="lb-brand">
+            <span class="pc-wordmark">Priston<b>Chess</b></span>
+            <span class="lb-brand-text">
+                <span class="lb-brand-label">PristonChess</span>
+                <span class="lb-brand-name">Übung</span>
+            </span>
+        </a>
+        <span class="status-pill" id="wifiStatusPill">…</span>
+    </header>
+
+    <main class="lb-shell">
+        <section class="lb-lesson-card">
+            <div class="lb-title-row">
+                <h2 id="lessonName">Lektion lädt…</h2>
+                <span class="lb-chip" id="lessonLevelChip">—</span>
+                <span class="lb-chip" id="lessonColorChip">—</span>
+            </div>
+            <div class="lb-progress-row">
+                <div class="lb-progress-bar"><div class="lb-progress-fill" id="lessonProgress"></div></div>
+                <span class="lb-counter" id="lessonCounter">0 / 0</span>
+            </div>
+            <div class="lb-hint">
+                <span class="lb-hint-who" id="lessonHintWho">—</span>
+                <span class="lb-hint-move" id="lessonHintMove">—</span>
+                <span class="lb-hint-mistakes" id="lessonHintMistakes"></span>
+            </div>
+        </section>
+
+        <section class="lb-board-area">
+            <div id="board"></div>
+        </section>
+
+        <section class="lb-actions">
+            <button type="button" class="restart" id="restartBtn">↺ Neustart</button>
+            <button type="button" class="leave"   id="leaveBtn">✕ Verlassen</button>
+        </section>
+    </main>
+
+    <div id="completionOverlay">
+        <div class="co-icon">🎉</div>
+        <div class="co-title" id="completionTitle">Lektion geschafft!</div>
+        <div class="co-sub" id="completionSub">Mastery wurde aktualisiert.</div>
+        <div class="co-actions">
+            <button type="button" class="primary" id="completionBackBtn">Zur Übersicht</button>
+        </div>
+    </div>
+
+    <script src="./scripts/jquery-4.0.0.min.js"></script>
+    <script src="./scripts/chessboard-1.0.0.min.js"></script>
+    <script>
+        // ---- Chess board (read-only, just mirrors the live FEN) ----
+        const board = Chessboard('board', {
+            position: 'start',
+            pieceTheme: './pieces/{piece}.svg',
+            showNotation: true,
+            draggable: false,
+        });
+        $(window).on('resize', () => board.resize());
+
+        let _currentFen = null;
+        let _leaveInFlight = false;
+
+        if (window.PC) PC.startWifiPill();
+
+        function updateLessonCard(L) {
+            document.getElementById('lessonName').textContent =
+                L.openingName || 'Lektion';
+            const _type = L.type || 0;
+            document.getElementById('lessonLevelChip').textContent =
+                _type === 1 ? 'Endspiel' : _type === 2 ? 'Taktik' : ('Stufe ' + (L.level || 1));
+            const colorChip = document.getElementById('lessonColorChip');
+            colorChip.classList.remove('color-w', 'color-b');
+            if (L.playerColor === 'b') {
+                colorChip.textContent = '♚ Schwarz';
+                colorChip.classList.add('color-b');
+            } else {
+                colorChip.textContent = '♔ Weiß';
+                colorChip.classList.add('color-w');
+            }
+
+            const cur = L.plyIndex | 0;
+            const tot = L.totalPlies | 0;
+            document.getElementById('lessonCounter').textContent = cur + ' / ' + tot;
+            const pct = tot > 0 ? Math.round((cur / tot) * 100) : 0;
+            document.getElementById('lessonProgress').style.width = pct + '%';
+
+            const whoEl = document.getElementById('lessonHintWho');
+            const moveEl = document.getElementById('lessonHintMove');
+            const mistakesEl = document.getElementById('lessonHintMistakes');
+
+            whoEl.classList.remove('opponent', 'done');
+
+            if (L.completed) {
+                whoEl.textContent = '✓ Geschafft';
+                whoEl.classList.add('done');
+                moveEl.textContent = '';
+            } else if (L.nextMove) {
+                const isPlayer = L.nextMoveColor === L.playerColor;
+                whoEl.textContent = isPlayer ? 'Dein Zug' : 'Gegenzug';
+                if (!isPlayer) whoEl.classList.add('opponent');
+                const m = L.nextMove;
+                moveEl.textContent = m.slice(0, 2).toUpperCase()
+                                   + ' → ' + m.slice(2, 4).toUpperCase();
+            } else {
+                whoEl.textContent = '—';
+                moveEl.textContent = '';
+            }
+
+            mistakesEl.textContent = (L.mistakes > 0)
+                ? ('⚠ ' + L.mistakes + ' Fehler')
+                : '';
+        }
+
+        async function pollUpdate() {
+            if (_leaveInFlight) return;
+            try {
+                const r = await fetch('./board-update', { cache: 'no-store' });
+                if (!r.ok) throw new Error();
+                const j = await r.json();
+
+                // If we're no longer in learning mode and not in the
+                // completion overlay, head back to the catalog (e.g. the
+                // device was kicked into another mode by the menu / another
+                // client).
+                if (j.mode !== 6 || !j.lesson) {
+                    const co = document.getElementById('completionOverlay');
+                    if (!co.classList.contains('visible')) {
+                        window.location.href = './learn.html';
+                    }
+                    return;
+                }
+
+                // Mirror the live FEN onto the visual board
+                if (j.fen && j.fen !== _currentFen) {
+                    _currentFen = j.fen;
+                    const pos = j.fen.split(' ')[0];
+                    board.position(pos, false);
+                }
+
+                updateLessonCard(j.lesson);
+
+                if (j.gameOver && j.lesson.completed) {
+                    const co = document.getElementById('completionOverlay');
+                    co.classList.add('visible');
+                    document.getElementById('completionSub').textContent =
+                        (j.lesson.mistakes > 0)
+                            ? ('Lektion abgeschlossen mit ' + j.lesson.mistakes + ' Fehler(n).')
+                            : 'Perfekt — ohne Fehler!';
+                }
+            } catch (e) { /* network glitch — retry next tick */ }
+        }
+        pollUpdate();
+        setInterval(pollUpdate, 500);
+
+        document.getElementById('restartBtn').addEventListener('click', () => {
+            fetch('./learn/restart', { method: 'POST' }).catch(() => {});
+        });
+
+        async function _endAndGoBack() {
+            if (_leaveInFlight) return;
+            _leaveInFlight = true;
+            try {
+                await fetch('./endgame', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'winner=d',
+                });
+            } catch (e) { /* best-effort */ }
+            window.location.href = './learn.html';
+        }
+        document.getElementById('leaveBtn').addEventListener('click', _endAndGoBack);
+        document.getElementById('completionBackBtn').addEventListener('click', _endAndGoBack);
+    </script>
+</body>
+
+</html>

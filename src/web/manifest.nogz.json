@@ -1,0 +1,16 @@
+{
+  "name": "PristonChess",
+  "short_name": "PristonChess",
+  "description": "Automatisches Schachbrett — Steuerung, Live-Brett und Analyse",
+  "lang": "de",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0B0E14",
+  "theme_color": "#0B0E14",
+  "icons": [
+    { "src": "./favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "./icon-512.png", "sizes": "256x256", "type": "image/png" }
+  ]
+}

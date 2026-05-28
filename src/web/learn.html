@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0f1115">
+    <title>PristonChess — Lernen</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+    <link rel="stylesheet" href="./css/styles.css">
+    <style>
+        /* ---- Page intro: centered, generous breathing room ---------- */
+        .learn-page-header {
+            text-align: center;
+            margin: var(--space-4) 0 var(--space-5);
+        }
+        .learn-page-header h2 {
+            margin: 0;
+            font-size: 1.6rem;
+            line-height: 1.15;
+            letter-spacing: -0.01em;
+        }
+        .learn-page-header p {
+            margin: 6px auto 0;
+            max-width: 38ch;
+            color: var(--color-text-muted);
+            font-size: var(--fs-sm);
+            line-height: 1.4;
+        }
+
+        /* ---- Color group: prominent section header so the player can
+           scan "Mit Weiß" vs "Mit Schwarz" at a glance -------------- */
+        .learn-section {
+            margin: 0 0 var(--space-6);
+        }
+        .learn-section + .learn-section {
+            margin-top: var(--space-6);
+            padding-top: var(--space-4);
+        }
+        .learn-section-head {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            padding: var(--space-2) 0 var(--space-3);
+            margin-bottom: var(--space-4);
+            border-bottom: 1px solid var(--color-border);
+        }
+        .learn-section-head .ls-dot {
+            width: 40px; height: 40px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center; justify-content: center;
+            font-size: 22px;
+            flex-shrink: 0;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+        }
+        .learn-section-head .ls-dot.white {
+            background: #f5f5f5; color: #111;
+        }
+        .learn-section-head .ls-dot.black {
+            background: #1a1a1a; color: #f5f5f5;
+            border: 1px solid #333;
+        }
+        .learn-section-head h3 {
+            margin: 0;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--color-text);
+            letter-spacing: -0.01em;
+        }
+        .learn-section-head .ls-count {
+            margin-left: auto;
+            padding: 4px 10px;
+            border-radius: var(--radius-pill, 99px);
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--color-border);
+            color: var(--color-text-muted);
+            font-size: 11px;
+            font-family: var(--font-mono);
+            white-space: nowrap;
+        }
+
+        /* ---- Opening card: clear title row + three big level buttons - */
+        .learn-card {
+            background: var(--color-bg-elev-2);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-4);
+            margin-bottom: var(--space-3);
+        }
+        .learn-card-head {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            margin-bottom: var(--space-3);
+        }
+        .learn-card-head h4 {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--color-text);
+            flex: 1; min-width: 0;
+            line-height: 1.25;
+            overflow-wrap: anywhere;
+        }
+        .learn-eco {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background: rgba(240, 192, 64, 0.10);
+            color: #f0c040;
+            border: 1px solid rgba(240, 192, 64, 0.25);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            flex-shrink: 0;
+        }
+
+        .learn-levels {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-2);
+        }
+        .learn-level {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 8px 12px;
+            background: var(--color-bg-elev-3);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            color: var(--color-text);
+            cursor: pointer;
+            text-align: center;
+            transition: background 140ms, border-color 140ms, transform 140ms;
+        }
+        .learn-level:hover {
+            background: rgba(255,255,255,0.05);
+            border-color: var(--color-accent, #f0c040);
+            transform: translateY(-1px);
+        }
+        .learn-level.mastered {
+            background: rgba(76, 175, 80, 0.10);
+            border-color: rgba(76, 175, 80, 0.55);
+        }
+        .learn-level-title {
+            font-weight: 600;
+            font-size: var(--fs-sm);
+            line-height: 1.1;
+        }
+        .learn-level-meta {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--color-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            line-height: 1;
+        }
+        .learn-level-mastery {
+            font-size: 16px;
+            letter-spacing: 3px;
+            color: #f0c040;
+            line-height: 1;
+            margin-top: 2px;
+        }
+        .learn-level.mastered .learn-level-mastery { color: #4caf50; }
+
+        .learn-actions {
+            display: flex;
+            gap: var(--space-3);
+            justify-content: space-between;
+            align-items: center;
+            margin: var(--space-6) 0 var(--space-4);
+            padding: var(--space-3) 0;
+            border-top: 1px dashed var(--color-border);
+        }
+        .learn-reset-btn {
+            padding: 8px 14px;
+            background: transparent;
+            color: var(--color-text-muted);
+            border: 1px dashed var(--color-border);
+            border-radius: var(--radius-md);
+            font-size: var(--fs-xs);
+            cursor: pointer;
+            transition: color 120ms, border-color 120ms;
+        }
+        .learn-reset-btn:hover {
+            color: #f44336;
+            border-color: #f44336;
+        }
+        .learn-empty {
+            padding: var(--space-4); text-align: center;
+            color: var(--color-text-muted); font-size: var(--fs-sm);
+            background: var(--color-bg-elev-2);
+            border: 1px dashed var(--color-border);
+            border-radius: var(--radius-lg);
+        }
+
+        /* ---- Filter bar: search + category/color/status chips ---------- */
+        .learn-filterbar {
+            background: var(--color-bg-elev-1);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-3) var(--space-4) var(--space-4);
+            margin-bottom: var(--space-5);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-3);
+        }
+        .learn-filterbar[hidden] { display: none; }
+        .learn-filter-row {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            flex-wrap: wrap;
+        }
+        .learn-filter-label {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--color-text-muted);
+            min-width: 62px;
+            flex-shrink: 0;
+        }
+        .learn-filter-row .option-group.pills { margin: 0; flex: 1; }
+        .learn-result-count {
+            font-size: var(--fs-xs);
+            color: var(--color-text-subtle);
+            text-align: right;
+        }
+    </style>
+    <script src="./scripts/app.js"></script>
+</head>
+
+<body>
+    <main class="container">
+        <header class="app-header">
+            <a href="./index.html" style="text-decoration:none; color:inherit;">
+                <h1 class="app-title">
+                    <span class="pc-wordmark">Priston<b>Chess</b></span>
+                    <span class="visually-hidden">PristonChess</span>
+                </h1>
+            </a>
+            <div class="app-status">
+                <span class="status-pill" id="modeStatusPill">Bereit</span>
+            </div>
+        </header>
+
+        <div class="learn-page-header">
+            <h2>Eröffnungen lernen</h2>
+            <p>LED-geführte Übungen — bei einem falschen Zug blinkt das Feld rot.</p>
+        </div>
+
+        <div class="learn-filterbar" id="learnFilterbar" hidden>
+            <div class="learn-filter-row">
+                <input type="search" id="learnSearch" placeholder="Eröffnung oder ECO suchen…"
+                       autocomplete="off" autocapitalize="off" spellcheck="false">
+            </div>
+            <div class="learn-filter-row">
+                <span class="learn-filter-label">Kategorie</span>
+                <div class="option-group pills" role="group" aria-label="Kategorie">
+                    <button type="button" class="toggle-btn pill active" data-filter="cat" data-value="all">Alle</button>
+                    <button type="button" class="toggle-btn pill" data-filter="cat" data-value="opening">Eröffnungen</button>
+                    <button type="button" class="toggle-btn pill" data-filter="cat" data-value="finish">Partien beenden</button>
+                    <button type="button" class="toggle-btn pill" data-filter="cat" data-value="tactic">Taktik</button>
+                </div>
+            </div>
+            <div class="learn-filter-row">
+                <span class="learn-filter-label">Farbe</span>
+                <div class="option-group pills" role="group" aria-label="Farbe">
+                    <button type="button" class="toggle-btn pill active" data-filter="color" data-value="all">Alle</button>
+                    <button type="button" class="toggle-btn pill" data-filter="color" data-value="w">♔ Weiß</button>
+                    <button type="button" class="toggle-btn pill" data-filter="color" data-value="b">♚ Schwarz</button>
+                </div>
+            </div>
+            <div class="learn-filter-row">
+                <span class="learn-filter-label">Status</span>
+                <div class="option-group pills" role="group" aria-label="Status">
+                    <button type="button" class="toggle-btn pill active" data-filter="status" data-value="all">Alle</button>
+                    <button type="button" class="toggle-btn pill" data-filter="status" data-value="open">Offen</button>
+                    <button type="button" class="toggle-btn pill" data-filter="status" data-value="mastered">Gemeistert</button>
+                </div>
+            </div>
+            <div class="learn-result-count" id="learnResultCount"></div>
+        </div>
+
+        <div id="learnSections">
+            <div class="learn-empty">Lade Eröffnungen…</div>
+        </div>
+
+        <div class="learn-actions">
+            <a href="./index.html" class="back-button" style="margin:0;">← Zurück</a>
+            <button type="button" class="learn-reset-btn" id="resetProgressBtn">
+                Fortschritt zurücksetzen
+            </button>
+        </div>
+
+        <div class="modal-overlay" id="modalOverlay">
+            <div class="modal-box">
+                <p id="modalMessage"></p>
+                <div class="modal-actions">
+                    <button type="button" id="modalOkBtn" class="button"
+                            style="background-color:#f44336; margin: 5px 0;">OK</button>
+                    <button type="button" id="modalCancelBtn" class="button"
+                            style="background-color:#666; margin: 5px 0;">Abbrechen</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        if (window.PC) PC.startWifiPill();
+
+        function esc(s) {
+            return String(s || '').replace(/[&<>"']/g, c => (
+                { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+            ));
+        }
+        function masteryStars(value) {
+            const max = 5;
+            const filled = Math.min(max, Math.max(0, value | 0));
+            return '★'.repeat(filled) + '☆'.repeat(max - filled);
+        }
+        const LEVEL_TITLES = { 1: 'Anfänger', 2: 'Mittel', 3: 'Voll' };
+
+        function renderCard(o) {
+            const type = o.type || 0;
+            if (type === 0) {
+                // Opening — three difficulty levels.
+                const levelsHtml = [1, 2, 3].map(lvl => {
+                    const key = 'l' + lvl;
+                    const plies = (o.plies && o.plies[key]) || 0;
+                    const mastery = (o.mastery && o.mastery[key]) || 0;
+                    const moves = Math.ceil(plies / 2);
+                    const mastered = mastery >= 5;
+                    return (
+                        '<button type="button" class="learn-level' + (mastered ? ' mastered' : '') +
+                            '" data-idx="' + o.idx + '" data-level="' + lvl + '">' +
+                            '<span class="learn-level-title">' + LEVEL_TITLES[lvl] + '</span>' +
+                            '<span class="learn-level-meta">' + moves + ' Züge</span>' +
+                            '<span class="learn-level-mastery">' + masteryStars(mastery) + '</span>' +
+                        '</button>'
+                    );
+                }).join('');
+                return (
+                    '<div class="learn-card"><div class="learn-card-head">' +
+                        '<h4>' + esc(o.name) + '</h4>' +
+                        (o.eco ? '<span class="learn-eco">' + esc(o.eco) + '</span>' : '') +
+                    '</div><div class="learn-levels">' + levelsHtml + '</div></div>'
+                );
+            }
+            // Finish / tactic — single "Üben" button.
+            const mastery = (o.mastery && o.mastery.l1) || 0;
+            const side = (o.color === 'w' ? 'Weiß am Zug' : 'Schwarz am Zug');
+            return (
+                '<div class="learn-card"><div class="learn-card-head">' +
+                    '<h4>' + esc(o.name) + '</h4>' +
+                '</div><div class="learn-levels" style="grid-template-columns:1fr;">' +
+                    '<button type="button" class="learn-level' + (mastery >= 5 ? ' mastered' : '') +
+                        '" data-idx="' + o.idx + '" data-level="1">' +
+                        '<span class="learn-level-title">Üben</span>' +
+                        '<span class="learn-level-meta">' + side + '</span>' +
+                        '<span class="learn-level-mastery">' + masteryStars(mastery) + '</span>' +
+                    '</button>' +
+                '</div></div>'
+            );
+        }
+
+        function totalMastery(list) {
+            let got = 0, max = 0;
+            for (const o of list) {
+                const levels = (o.type || 0) === 0 ? ['l1', 'l2', 'l3'] : ['l1'];
+                for (const k of levels) { got += (o.mastery && o.mastery[k]) || 0; max += 5; }
+            }
+            return { got, max };
+        }
+
+        function sectionHtml(symbol, dotClass, label, items) {
+            if (!items.length) return '';
+            const t = totalMastery(items);
+            return (
+                '<section class="learn-section">' +
+                    '<div class="learn-section-head">' +
+                        '<span class="ls-dot ' + dotClass + '">' + symbol + '</span>' +
+                        '<h3>' + label + '</h3>' +
+                        '<span class="ls-count">' + items.length + ' · ' + t.got + '/' + t.max + ' ★</span>' +
+                    '</div>' +
+                    items.map(renderCard).join('') +
+                '</section>'
+            );
+        }
+
+        // Whole catalog (fetched once) + active filter state. Filtering is
+        // purely client-side — /learn/list already returns every field we need.
+        let CATALOG = [];
+        const FILTER = { cat: 'all', color: 'all', status: 'all', q: '' };
+
+        // A card counts as "mastered" once every applicable level reaches 5 ★.
+        function cardMastered(o) {
+            const levels = (o.type || 0) === 0 ? ['l1', 'l2', 'l3'] : ['l1'];
+            return levels.every(k => ((o.mastery && o.mastery[k]) || 0) >= 5);
+        }
+
+        function matchesFilter(o) {
+            const t = o.type || 0;
+            if (FILTER.cat === 'opening' && t !== 0) return false;
+            if (FILTER.cat === 'finish'  && t !== 1) return false;
+            if (FILTER.cat === 'tactic'  && t !== 2) return false;
+            if (FILTER.color !== 'all' && (o.color || '') !== FILTER.color) return false;
+            if (FILTER.status === 'mastered' && !cardMastered(o)) return false;
+            if (FILTER.status === 'open'     &&  cardMastered(o)) return false;
+            if (FILTER.q) {
+                const hay = ((o.name || '') + ' ' + (o.eco || '')).toLowerCase();
+                if (!hay.includes(FILTER.q)) return false;
+            }
+            return true;
+        }
+
+        function renderCatalog() {
+            const root = document.getElementById('learnSections');
+            const list = CATALOG.filter(matchesFilter);
+            const openings = list.filter(o => (o.type || 0) === 0);
+            const finishes = list.filter(o => o.type === 1);
+            const tactics  = list.filter(o => o.type === 2);
+            let html = '';
+            html += sectionHtml('♔', 'white', 'Eröffnungen · Weiß',    openings.filter(o => o.color === 'w'));
+            html += sectionHtml('♚', 'black', 'Eröffnungen · Schwarz', openings.filter(o => o.color === 'b'));
+            html += sectionHtml('♛', 'black', 'Partien beenden',        finishes);
+            html += sectionHtml('⚡', 'white', 'Taktik',                 tactics);
+            root.innerHTML = html ||
+                '<div class="learn-empty">Keine Lektion passt zu den Filtern.</div>';
+            document.getElementById('learnResultCount').textContent =
+                list.length + ' von ' + CATALOG.length + ' Lektionen';
+            root.querySelectorAll('.learn-level').forEach(btn => {
+                btn.addEventListener('click', () => startLesson(
+                    parseInt(btn.dataset.idx, 10),
+                    parseInt(btn.dataset.level, 10),
+                ));
+            });
+        }
+
+        async function loadCatalog() {
+            const root = document.getElementById('learnSections');
+            try {
+                const r = await fetch('./learn/list', { cache: 'no-store' });
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const data = await r.json();
+                CATALOG = (data && data.openings) || [];
+                if (CATALOG.length === 0) {
+                    document.getElementById('learnFilterbar').hidden = true;
+                    root.innerHTML = '<div class="learn-empty">Keine Lektionen verfügbar.</div>';
+                    return;
+                }
+                document.getElementById('learnFilterbar').hidden = false;
+                renderCatalog();
+            } catch (e) {
+                document.getElementById('learnFilterbar').hidden = true;
+                root.innerHTML = '<div class="learn-empty">Fehler beim Laden: ' + esc(e.message || e) + '</div>';
+            }
+        }
+
+        // Filter chips: single-select per group, then re-render.
+        document.querySelectorAll('.learn-filterbar .toggle-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const group = btn.dataset.filter;
+                FILTER[group] = btn.dataset.value;
+                document.querySelectorAll('.toggle-btn[data-filter="' + group + '"]')
+                    .forEach(b => b.classList.toggle('active', b === btn));
+                renderCatalog();
+            });
+        });
+
+        const searchEl = document.getElementById('learnSearch');
+        searchEl.addEventListener('input', () => {
+            FILTER.q = searchEl.value.trim().toLowerCase();
+            renderCatalog();
+        });
+
+        async function startLesson(openingIdx, level) {
+            try {
+                const params = new URLSearchParams({
+                    gamemode: '6',
+                    openingIdx: String(openingIdx),
+                    level: String(level),
+                });
+                const r = await fetch('./gameselect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: params.toString(),
+                });
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                window.location.href = './learn-board.html';
+            } catch (e) {
+                alert('Konnte Lektion nicht starten: ' + (e.message || e));
+            }
+        }
+
+        document.getElementById('resetProgressBtn').addEventListener('click', () => {
+            showConfirm('Allen Lern-Fortschritt wirklich löschen?').then(ok => {
+                if (!ok) return;
+                fetch('./learn/reset', { method: 'POST' })
+                    .then(() => loadCatalog())
+                    .catch(() => alert('Reset fehlgeschlagen.'));
+            });
+        });
+
+        let _modalResolve = null;
+        function showConfirm(msg) {
+            return new Promise(resolve => {
+                _modalResolve = resolve;
+                document.getElementById('modalMessage').textContent = msg;
+                document.getElementById('modalOverlay').classList.add('visible');
+            });
+        }
+        document.getElementById('modalOkBtn').addEventListener('click', () => {
+            document.getElementById('modalOverlay').classList.remove('visible');
+            if (_modalResolve) { _modalResolve(true); _modalResolve = null; }
+        });
+        document.getElementById('modalCancelBtn').addEventListener('click', () => {
+            document.getElementById('modalOverlay').classList.remove('visible');
+            if (_modalResolve) { _modalResolve(false); _modalResolve = null; }
+        });
+
+        loadCatalog();
+    </script>
+</body>
+
+</html>

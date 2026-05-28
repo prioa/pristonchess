@@ -1,0 +1,2115 @@
+/* =============================================================================
+   PristonChess – Modern UI System
+   Mobile-first, design-token-driven. Class names preserved from the original
+   OpenChess UI so existing HTML keeps working — only the visual layer changes.
+   ============================================================================= */
+
+/* Self-hosted CD headline font (Exo 2, variable, latin subset). Served from
+   LittleFS — no external Google Fonts request, so AP-only/offline clients render
+   instantly. Latin range covers German (ä ö ü ß). */
+@font-face {
+    font-family: "Exo 2";
+    font-style: normal;
+    font-weight: 500 700;
+    font-display: swap;
+    src: url("../fonts/exo2-latin.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+        U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+        U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ============================================================================
+   1. Design Tokens
+   ============================================================================ */
+:root {
+    /* Color — PristonChess CD palette (dark) */
+    --color-bg:           #0B0E14;  /* CD background */
+    --color-bg-elev-1:    #131925;
+    --color-bg-elev-2:    #1A1F2B;  /* CD Dunkelgrau (surface) */
+    --color-bg-elev-3:    #232A38;
+    --color-border:       rgba(230, 234, 242, 0.10);
+    --color-border-strong:rgba(230, 234, 242, 0.20);
+    --color-overlay:      rgba(7, 9, 14, 0.74);
+
+    /* Text */
+    --color-text:         #E6EAF2;  /* CD Hellgrau */
+    --color-text-muted:   #9aa6bb;
+    --color-text-subtle:  #6b7689;
+    --color-text-inverse: #0B0E14;
+
+    /* Brand accent — CD blue */
+    --color-accent:       #4D8CFF;
+    --color-accent-soft:  #74A4FF;
+    --color-accent-bg:    rgba(77, 140, 255, 0.16);
+    --color-accent-ring:  rgba(77, 140, 255, 0.45);
+
+    /* Semantic */
+    --color-success:      #34d399;
+    --color-success-bg:   rgba(52, 211, 153, 0.16);
+    --color-danger:       #f87171;
+    --color-danger-bg:    rgba(248, 113, 113, 0.16);
+    --color-warning:      #fbbf24;
+    --color-warning-bg:   rgba(251, 191, 36, 0.16);
+    --color-info:         #60a5fa;
+    --color-info-bg:      rgba(96, 165, 250, 0.16);
+
+    /* Square colors (chess board) */
+    --sq-light:           #ebd9b8;
+    --sq-dark:            #946a45;
+
+    /* Spacing scale (4-px base) */
+    --space-1:  4px;
+    --space-2:  8px;
+    --space-3:  12px;
+    --space-4:  16px;
+    --space-5:  20px;
+    --space-6:  24px;
+    --space-8:  32px;
+    --space-10: 40px;
+    --space-12: 48px;
+
+    /* Typography */
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace;
+    --font-display: "Exo 2", var(--font-sans);   /* CD headline font */
+    --fs-xs:    12px;
+    --fs-sm:    14px;
+    --fs-base:  15px;
+    --fs-md:    16px;
+    --fs-lg:    18px;
+    --fs-xl:    22px;
+    --fs-2xl:   28px;
+    --lh-tight: 1.2;
+    --lh-base:  1.45;
+    --lh-loose: 1.6;
+
+    /* Radii */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 20px;
+    --radius-pill: 999px;
+
+    /* Elevation */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.32),
+                 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.38),
+                 0 4px 8px rgba(0, 0, 0, 0.4);
+
+    /* Motion */
+    --easing:        cubic-bezier(0.2, 0.8, 0.2, 1);
+    --duration-1:    120ms;
+    --duration-2:    220ms;
+    --duration-3:    320ms;
+
+    /* Touch targets */
+    --tap-target: 44px;
+
+    /* Layout */
+    --container-max: 480px;   /* app column — phone-like, readable on desktop */
+
+    /* Backward-compat shims used in HTML inline styles */
+    --bg-color:        var(--color-bg-elev-1);
+    --dark2:           #0e1118;
+    --dark2-3:         #131724;
+    --dark3:           #161a26;
+    --dark3-4:         #1b2030;
+    --dark4:           var(--color-bg-elev-2);
+    --dark5:           var(--color-bg-elev-3);
+    --dark9:           var(--color-text-subtle);
+    --text-light:      var(--color-text);
+    --accent-orange:   var(--color-accent);
+}
+
+/* Light-mode override intentionally omitted — the app uses a single dark
+   theme so the e-paper aesthetic and chess board contrast stay consistent
+   regardless of the user's OS preference. */
+
+/* ============================================================================
+   2. Reset + base
+   ============================================================================ */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    color-scheme: dark;
+    overflow-x: clip;   /* never scroll sideways; clip keeps sticky working */
+}
+
+body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: var(--fs-base);
+    line-height: var(--lh-base);
+    color: var(--color-text);
+    background:
+        radial-gradient(1200px 600px at 50% -10%,
+                        rgba(77, 140, 255, 0.10), transparent 60%),
+        var(--color-bg);
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+img, svg {
+    display: block;
+    max-width: 100%;
+}
+
+a {
+    color: var(--color-accent);
+    text-decoration: none;
+    transition: color var(--duration-1) var(--easing);
+}
+
+a:hover {
+    color: var(--color-accent-soft);
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+}
+
+::selection {
+    background: var(--color-accent-bg);
+    color: var(--color-text);
+}
+
+/* ============================================================================
+   3. Layout primitives
+   ============================================================================ */
+.container {
+    width: 100%;
+    max-width: var(--container-max);
+    margin: 0 auto;
+    padding: var(--space-4);
+    background: var(--color-bg-elev-1);
+    /* No outer border / radius — the user wants the page to read as part
+       of the screen, not as a card inside a frame. */
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+@media (min-width: 600px) {
+    .container {
+        margin: var(--space-6) auto;
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-md);
+        padding: var(--space-6);
+    }
+}
+
+.hr-divider {
+    height: 1px;
+    background: var(--color-border);
+    border: 0;
+    margin: var(--space-4) calc(-1 * var(--space-4));
+}
+
+@media (min-width: 600px) {
+    .hr-divider {
+        margin: var(--space-4) calc(-1 * var(--space-6));
+    }
+}
+
+.form-group {
+    margin-bottom: var(--space-4);
+}
+
+/* ============================================================================
+   4. Typography
+   ============================================================================ */
+h1, h2, h3, h4 {
+    margin: 0 0 var(--space-3) 0;
+    color: var(--color-text);
+    line-height: var(--lh-tight);
+    letter-spacing: -0.01em;
+    font-weight: 600;
+    font-family: var(--font-display);
+}
+
+h1 { font-size: var(--fs-2xl); }
+
+h2 {
+    text-align: center;
+    font-size: var(--fs-2xl);
+    color: var(--color-text);
+    background: linear-gradient(
+        180deg, var(--color-text) 0%, var(--color-accent-soft) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin: 0 0 var(--space-5);
+}
+
+h3 {
+    font-size: var(--fs-lg);
+    margin-bottom: var(--space-4);
+    text-align: center;
+    color: var(--color-accent);
+}
+
+p { margin: 0 0 var(--space-3); }
+
+label {
+    display: block;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-2);
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+}
+
+/* ============================================================================
+   5. Forms
+   ============================================================================ */
+form { margin: 0; }
+
+input[type="text"],
+input[type="password"],
+input[type="number"],
+input[type="email"],
+input[type="search"],
+select,
+textarea {
+    width: 100%;
+    min-height: var(--tap-target);
+    padding: 10px 14px;
+    margin: 0;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    box-sizing: border-box;
+    font-size: var(--fs-md);
+    font-family: var(--font-sans);
+    color: var(--color-text);
+    background: var(--color-bg-elev-2);
+    transition: border-color var(--duration-1) var(--easing),
+                background  var(--duration-1) var(--easing),
+                box-shadow  var(--duration-1) var(--easing);
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: var(--color-text-subtle);
+    opacity: 1;
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+    border-color: var(--color-text-subtle);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    background: var(--color-bg-elev-3);
+    box-shadow: 0 0 0 3px var(--color-accent-ring);
+}
+
+select {
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                      linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position: calc(100% - 18px) center, calc(100% - 13px) center;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 36px;
+}
+
+/* ============================================================================
+   6. Buttons
+   ============================================================================ */
+input[type="submit"],
+.button,
+.back-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    width: 100%;
+    min-height: var(--tap-target);
+    padding: 12px 18px;
+    margin: var(--space-2) 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-pill);
+    background: linear-gradient(180deg, var(--color-accent-soft), var(--color-accent));
+    color: #fff;
+    font-family: var(--font-sans);
+    font-size: var(--fs-md);
+    font-weight: 600;
+    text-decoration: none;
+    text-align: center;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--duration-1) var(--easing),
+                background var(--duration-1) var(--easing),
+                box-shadow var(--duration-1) var(--easing),
+                color      var(--duration-1) var(--easing);
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+}
+
+input[type="submit"]:hover,
+.button:hover,
+.back-button:hover {
+    background: var(--color-accent-soft);
+    box-shadow: var(--shadow-md);
+}
+
+input[type="submit"]:active,
+.button:active,
+.back-button:active {
+    transform: translateY(1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.button:disabled,
+.button[disabled],
+input[type="submit"]:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.back-button {
+    background: transparent;
+    color: var(--color-text-muted);
+    border-color: var(--color-border-strong);
+    box-shadow: none;
+}
+
+.back-button:hover {
+    background: var(--color-bg-elev-2);
+    color: var(--color-text);
+    box-shadow: none;
+}
+
+/* ============================================================================
+   7. Range Slider
+   ============================================================================ */
+.slider-input {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    background: var(--color-bg-elev-3);
+    border-radius: var(--radius-pill);
+    outline: none;
+    margin: var(--space-3) 0;
+    padding: 0;
+    border: 0;
+}
+
+.slider-input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 22px; height: 22px;
+    background: var(--color-accent);
+    border-radius: 50%;
+    border: 3px solid var(--color-bg-elev-1);
+    cursor: pointer;
+    box-shadow: var(--shadow-md);
+    transition: transform var(--duration-1) var(--easing);
+}
+
+.slider-input::-moz-range-thumb {
+    width: 22px; height: 22px;
+    background: var(--color-accent);
+    border-radius: 50%;
+    border: 3px solid var(--color-bg-elev-1);
+    cursor: pointer;
+    box-shadow: var(--shadow-md);
+    transition: transform var(--duration-1) var(--easing);
+}
+
+.slider-input::-webkit-slider-thumb:hover,
+.slider-input::-moz-range-thumb:hover {
+    transform: scale(1.08);
+}
+
+/* ============================================================================
+   8. Toggle Switch
+   ============================================================================ */
+.toggle-switch {
+    position: relative;
+    width: 44px;
+    min-width: 44px;
+    height: 26px;
+    flex-shrink: 0;
+}
+
+.toggle-switch input {
+    opacity: 0; width: 0; height: 0;
+    position: absolute;
+}
+
+.toggle-slider {
+    position: absolute;
+    inset: 0;
+    cursor: pointer;
+    background: var(--color-bg-elev-3);
+    border-radius: var(--radius-pill);
+    transition: background var(--duration-2) var(--easing);
+}
+
+.toggle-slider::before {
+    content: "";
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 20px; height: 20px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform var(--duration-2) var(--easing);
+    box-shadow: var(--shadow-sm);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background: var(--color-accent);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(18px);
+}
+
+/* ============================================================================
+   9. Toggle Rows (list items in settings)
+   ============================================================================ */
+.toggle-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) 0;
+    min-height: var(--tap-target);
+}
+
+.toggle-row-divider {
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: var(--space-3);
+}
+
+.toggle-label {
+    color: var(--color-text);
+    font-size: var(--fs-md);
+    font-weight: 500;
+    margin: 0;
+}
+
+.toggle-description {
+    color: var(--color-text-muted);
+    font-size: var(--fs-xs);
+    margin: 2px 0 0;
+    line-height: var(--lh-base);
+}
+
+/* ============================================================================
+   10. Collapsible Sections
+   ============================================================================ */
+.settings-section {
+    background: linear-gradient(180deg, var(--color-bg-elev-3), var(--color-bg-elev-2));
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-4);
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+    transition: border-color var(--duration-1) var(--easing),
+                box-shadow var(--duration-1) var(--easing);
+}
+
+.settings-section:hover {
+    border-color: var(--color-border-strong);
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    min-height: var(--tap-target);
+    cursor: pointer;
+    background: transparent;
+    transition: background var(--duration-1) var(--easing);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.section-header:hover {
+    background: var(--color-bg-elev-3);
+}
+
+.section-header h3 {
+    margin: 0;
+    flex: 1;
+    text-align: left;
+    color: var(--color-text);
+    font-size: var(--fs-md);
+}
+
+.section-icon {
+    color: var(--color-accent);
+    font-size: var(--fs-sm);
+    transition: transform var(--duration-2) var(--easing);
+    flex-shrink: 0;
+}
+
+.section-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height var(--duration-3) var(--easing),
+                padding    var(--duration-3) var(--easing);
+    padding: 0 var(--space-4);
+    background: var(--color-bg-elev-1);
+}
+
+.section-content.expanded {
+    max-height: 2000px;
+    padding: var(--space-4);
+    border-top: 1px solid var(--color-border);
+}
+
+/* ============================================================================
+   11. WiFi network rows
+   ============================================================================ */
+.network-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+}
+
+.network-item,
+.network-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    min-height: var(--tap-target);
+    background: var(--color-bg-elev-2);
+    border-bottom: 1px solid var(--color-border);
+    cursor: pointer;
+    transition: background var(--duration-1) var(--easing);
+}
+
+.network-item:last-child,
+.network-row:last-child {
+    border-bottom: 0;
+}
+
+.network-item:hover,
+.network-row:hover {
+    background: var(--color-bg-elev-3);
+}
+
+.network-ssid {
+    flex: 1;
+    color: var(--color-text);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.network-signal,
+.signal-icon {
+    color: var(--color-text-muted);
+    font-size: var(--fs-sm);
+    flex-shrink: 0;
+}
+
+.net-btn,
+.net-btn-connect {
+    background: var(--color-accent);
+    color: var(--color-text-inverse);
+    border: 0;
+    border-radius: var(--radius-md);
+    padding: 8px 12px;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 36px;
+}
+
+.net-btn-connect:hover {
+    background: var(--color-accent-soft);
+}
+
+/* ============================================================================
+   12. Game-mode grid (mode selection page)
+   ============================================================================ */
+.game-grid {
+    display: grid;
+    /* Adapts to the (capped) container width, not the viewport — so the cards
+       never get crammed when the app sits in its 480px column on desktop. */
+    grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+}
+
+.game-mode {
+    position: relative;
+    padding: var(--space-4);
+    background: var(--color-bg-elev-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    color: var(--color-text);
+    cursor: pointer;
+    overflow-wrap: anywhere;
+    transition: transform var(--duration-1) var(--easing),
+                border-color var(--duration-1) var(--easing),
+                background var(--duration-1) var(--easing),
+                box-shadow var(--duration-1) var(--easing);
+    -webkit-tap-highlight-color: transparent;
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+    overflow: hidden;
+}
+
+.game-mode::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg,
+        var(--color-accent-bg) 0%, transparent 60%);
+    opacity: 0;
+    transition: opacity var(--duration-2) var(--easing);
+    pointer-events: none;
+}
+
+.game-mode:hover {
+    border-color: var(--color-accent);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.game-mode:hover::before { opacity: 1; }
+
+.game-mode:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow-sm);
+}
+
+.game-mode h3 {
+    color: var(--color-text);
+    font-size: var(--fs-lg);
+    margin: 0 0 var(--space-2);
+}
+
+.game-mode p {
+    color: var(--color-text-muted);
+    font-size: var(--fs-sm);
+    margin: 2px 0;
+    line-height: var(--lh-base);
+}
+
+.game-mode.unavailable {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* ============================================================================
+   13. Chessboard wrapper
+   ============================================================================ */
+.chessboard-container,
+.board-wrapper {
+    margin: 0 auto;
+    max-width: min(100%, 560px);
+}
+
+.black-square { background-color: var(--sq-dark); }
+.white-square { background-color: var(--sq-light); }
+
+.board-edit-marker {
+    outline: 3px solid var(--color-warning);
+    outline-offset: -3px;
+}
+
+/* ============================================================================
+   14. Board toolbar / nav buttons
+   ============================================================================ */
+.board-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    padding: var(--space-2) 0;
+}
+
+.board-controls-left,
+.board-controls-right,
+.board-controls-center,
+.board-controls-action-left,
+.board-controls-action-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.board-ctrl-btn,
+.nav-btn,
+.fen-btn,
+.castle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--tap-target);
+    min-height: var(--tap-target);
+    padding: 8px 12px;
+    background: var(--color-bg-elev-2);
+    color: var(--color-text);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    font-size: var(--fs-md);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--duration-1) var(--easing),
+                border-color var(--duration-1) var(--easing);
+}
+
+.board-ctrl-btn:hover,
+.nav-btn:hover,
+.fen-btn:hover,
+.castle-btn:hover {
+    background: var(--color-bg-elev-3);
+    border-color: var(--color-text-subtle);
+}
+
+.board-ctrl-btn.active,
+.nav-btn.active,
+.castle-btn.active {
+    background: var(--color-accent);
+    color: var(--color-text-inverse);
+    border-color: var(--color-accent);
+}
+
+.action-label {
+    color: var(--color-text-muted);
+    font-size: var(--fs-sm);
+    font-weight: 500;
+}
+
+.move-counter {
+    color: var(--color-text-muted);
+    font-size: var(--fs-sm);
+    font-family: var(--font-mono);
+    padding: 0 var(--space-2);
+}
+
+/* ============================================================================
+   15. Game action buttons (resign / draw)
+   ============================================================================ */
+.game-action-btn {
+    flex: 1;
+    min-height: var(--tap-target);
+    padding: 10px 14px;
+    background: var(--color-bg-elev-2);
+    color: var(--color-text);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    font-size: var(--fs-md);
+    cursor: pointer;
+    transition: background var(--duration-1) var(--easing);
+}
+
+.game-action-btn:hover { background: var(--color-bg-elev-3); }
+
+.game-action-btn.danger {
+    color: var(--color-danger);
+    border-color: var(--color-danger);
+}
+
+.game-action-btn.danger:hover {
+    background: var(--color-danger-bg);
+}
+
+/* ============================================================================
+   16. Eval bar
+   ============================================================================ */
+.eval-bar-container {
+    height: 8px;
+    background: var(--color-bg-elev-3);
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+    margin: var(--space-3) 0;
+    border: 1px solid var(--color-border);
+}
+
+.eval-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg,
+        var(--color-accent-soft) 0%, var(--color-accent) 100%);
+    transition: width var(--duration-3) var(--easing);
+}
+
+/* New labelled eval bar — visible only in modes that actually produce
+   a Stockfish evaluation (Bot / Lichess). */
+.eval-bar-wrap {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: var(--space-2);
+    margin: var(--space-3) 0;
+    padding: 6px 10px;
+    background: var(--color-bg-elev-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+}
+.eval-bar-label {
+    font-size: var(--fs-xs);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.eval-bar-track {
+    height: 6px;
+    background: var(--color-bg-elev-3);
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+}
+.eval-bar-track > #eval-bar {
+    height: 100%;
+    width: 50%;
+    background: linear-gradient(90deg,
+        var(--color-accent-soft) 0%, var(--color-accent) 100%);
+    transition: width var(--duration-3) var(--easing);
+}
+.eval-bar-text {
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    color: var(--color-text);
+    min-width: 36px;
+    text-align: right;
+}
+
+/* -------- Board-toolbar utility-button rework -------- */
+.board-tools-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px;
+    background: var(--color-bg-elev-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+}
+.board-nav-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px;
+    background: var(--color-bg-elev-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+}
+
+.ui-icon-btn {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-width: 48px;
+    padding: 6px 8px;
+    background: transparent;
+    color: var(--color-text);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm, 6px);
+    cursor: pointer;
+    transition: background var(--duration-1) var(--easing);
+}
+.ui-icon-btn:hover {
+    background: var(--color-bg-elev-3);
+}
+.ui-icon-btn.compact {
+    min-width: 32px;
+    padding: 6px;
+    font-size: var(--fs-md);
+}
+.ui-icon-btn .ui-icon {
+    font-size: 18px;
+    line-height: 1;
+}
+.ui-icon-btn .ui-icon-label {
+    font-size: 10px;
+    color: var(--color-text-muted);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+.ui-icon-btn.active {
+    background: var(--color-accent);
+    color: var(--color-text-inverse);
+}
+.ui-icon-btn.active .ui-icon-label {
+    color: var(--color-text-inverse);
+    opacity: 0.85;
+}
+
+/* -------- Game-Actions Panel (Remis / Aufgeben / Beenden) -------- */
+.game-actions-panel {
+    margin-top: var(--space-3);
+    padding: var(--space-3) var(--space-4) var(--space-4);
+    background: var(--color-bg-elev-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+}
+.game-actions-header {
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-2);
+}
+.game-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--space-2);
+}
+.game-action-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 10px 12px;
+    background: var(--color-bg-elev-3);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    color: var(--color-text);
+    cursor: pointer;
+    text-align: left;
+    transition: background var(--duration-1) var(--easing),
+                border-color var(--duration-1) var(--easing);
+}
+.game-action-card:hover {
+    background: var(--color-bg-elev-4, var(--color-bg-elev-3));
+    border-color: var(--color-text-subtle);
+}
+.game-action-card.danger {
+    color: var(--color-danger);
+    border-color: var(--color-danger);
+}
+.game-action-card.danger:hover {
+    background: var(--color-danger-bg);
+}
+.game-action-card .ga-icon {
+    font-size: 22px;
+    line-height: 1;
+    flex-shrink: 0;
+    width: 28px;
+    text-align: center;
+}
+.game-action-card .ga-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+.game-action-card .ga-title {
+    font-weight: 600;
+    font-size: var(--fs-sm);
+}
+.game-action-card .ga-desc {
+    font-size: 10px;
+    opacity: 0.75;
+}
+
+/* ============================================================================
+   17. Config / animated panels
+   ============================================================================ */
+.config-panel,
+.anim-panel {
+    margin-top: var(--space-4);
+    padding: var(--space-5);
+    background: var(--color-bg-elev-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    display: none;
+    animation: panelIn var(--duration-3) var(--easing);
+}
+
+.config-panel.visible,
+.anim-panel.visible {
+    display: block;
+}
+
+@keyframes panelIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================================
+   18. FEN editor + game options
+   ============================================================================ */
+.fen-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: var(--space-3) 0;
+}
+
+@media (min-width: 480px) {
+    .fen-container { flex-direction: row; align-items: center; }
+}
+
+.game-options {
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    margin: var(--space-3) 0;
+}
+
+.castling-toggles {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+}
+
+/* ============================================================================
+   19. Controls rows
+   ============================================================================ */
+.controls,
+.controls-sm {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    margin: var(--space-3) 0;
+}
+
+.controls-sm { gap: var(--space-1); }
+
+/* ============================================================================
+   20. Info / notice boxes
+   ============================================================================ */
+.info-box {
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-info-bg);
+    border: 1px solid var(--color-info);
+    border-radius: var(--radius-md);
+    color: var(--color-text);
+    font-size: var(--fs-sm);
+    margin: var(--space-3) 0;
+    line-height: var(--lh-base);
+}
+
+/* ============================================================================
+   21. Game library / selector
+   ============================================================================ */
+.game-selector-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+    margin: var(--space-3) 0;
+}
+
+@media (min-width: 480px) {
+    .game-selector-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.game-lib-delete-toggle {
+    background: transparent;
+    color: var(--color-danger);
+    border: 1px solid var(--color-danger);
+    padding: 6px 12px;
+    border-radius: var(--radius-md);
+    font-size: var(--fs-sm);
+    cursor: pointer;
+}
+
+.delete-confirm-bar {
+    display: flex;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    background: var(--color-danger-bg);
+    border-radius: var(--radius-md);
+    margin: var(--space-3) 0;
+}
+
+.delete-confirm-btn {
+    flex: 1;
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    border: 0;
+    background: var(--color-danger);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* ============================================================================
+   22. Modals
+   ============================================================================ */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--color-overlay);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: none;                /* hidden until .visible is added */
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+    z-index: 1000;
+}
+
+.modal-overlay.visible {
+    display: flex;
+    animation: fadeIn var(--duration-2) var(--easing);
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.modal-box {
+    width: 100%;
+    max-width: 440px;
+    max-height: calc(100vh - 2 * var(--space-4));
+    max-height: calc(100dvh - 2 * var(--space-4));
+    overflow-y: auto;
+    padding: var(--space-6);
+    background: var(--color-bg-elev-1);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    animation: modalIn var(--duration-3) var(--easing);
+}
+
+@keyframes modalIn {
+    from { opacity: 0; transform: scale(0.96) translateY(8px); }
+    to   { opacity: 1; transform: scale(1)   translateY(0); }
+}
+
+.modal-actions {
+    display: flex;
+    gap: var(--space-2);
+    margin-top: var(--space-5);
+    flex-wrap: wrap;
+}
+
+.modal-actions .button { margin: 0; }
+
+/* ============================================================================
+   23. Lichess + OTA status
+   ============================================================================ */
+.lichess-status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 4px 10px;
+    background: var(--color-info-bg);
+    border: 1px solid var(--color-info);
+    border-radius: var(--radius-pill);
+    font-size: var(--fs-xs);
+    color: var(--color-text);
+}
+
+/* ============================================================================
+   24. Promotion popup
+   ============================================================================ */
+.promotion-popup {
+    position: fixed;
+    inset: 0;
+    background: var(--color-overlay);
+    display: none;                 /* hidden until .visible is added */
+    align-items: center;
+    justify-content: center;
+    z-index: 1100;
+}
+
+.promotion-popup.visible {
+    display: flex;
+    animation: fadeIn var(--duration-2) var(--easing);
+}
+
+.promotion-choices {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-3);
+    padding: var(--space-5);
+    background: var(--color-bg-elev-1);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--color-border-strong);
+    box-shadow: var(--shadow-lg);
+}
+
+.promotion-piece {
+    width: 88px;
+    height: 88px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-elev-2);
+    border: 2px solid var(--color-border-strong);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all var(--duration-1) var(--easing);
+}
+
+.promotion-piece:hover {
+    transform: scale(1.05);
+    border-color: var(--color-accent);
+}
+
+/* ============================================================================
+   25. Color picker (board theme)
+   ============================================================================ */
+.color-picker-group {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    align-items: center;
+    margin: var(--space-2) 0;
+}
+
+.color-picker-item {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    border: 2px solid var(--color-border-strong);
+    cursor: pointer;
+    transition: transform var(--duration-1) var(--easing);
+}
+
+.color-picker-item:hover {
+    transform: scale(1.08);
+    border-color: var(--color-accent);
+}
+
+.color-picker-item.selected {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-ring);
+}
+
+/* ============================================================================
+   26. Hardware Configuration panel
+   ============================================================================ */
+.hw-section {
+    background: var(--color-bg-elev-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    margin-bottom: var(--space-3);
+}
+
+.hw-section-title {
+    color: var(--color-accent);
+    font-size: var(--fs-md);
+    font-weight: 600;
+    margin: 0 0 var(--space-3);
+}
+
+.hw-section-title-split,
+.hw-section-title-split-led,
+.hw-section-title-split-sr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+    color: var(--color-text-muted);
+    font-size: var(--fs-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.hw-section-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.hw-field {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+.hw-field-label {
+    min-width: 0;
+    color: var(--color-text);
+    font-size: var(--fs-sm);
+    text-align: center;
+}
+
+.hw-gpio-input,
+.hw-gpio-input-sr {
+    width: 100%;
+    box-sizing: border-box;
+    text-align: center;
+    font-family: var(--font-mono);
+    padding: 6px 8px;
+    min-height: 36px;
+}
+
+.hw-top-pins,
+.hw-row-pins {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+}
+
+@media (min-width: 480px) {
+    .hw-top-pins,
+    .hw-row-pins {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+.hw-top-pins-divider {
+    height: 1px;
+    background: var(--color-border);
+    margin: var(--space-3) 0;
+}
+
+.hw-transistor-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: var(--color-bg-elev-3);
+    border-radius: var(--radius-md);
+}
+
+.hw-transistor-info {
+    color: var(--color-text-muted);
+    font-size: var(--fs-xs);
+    line-height: var(--lh-base);
+}
+
+.hw-transistor-label {
+    color: var(--color-text);
+    font-weight: 500;
+}
+
+.hw-npn-pnp-toggle {
+    display: flex;
+    gap: var(--space-2);
+}
+
+.hw-warning-banner {
+    padding: var(--space-4);
+    background: var(--color-warning-bg);
+    border: 1px solid var(--color-warning);
+    border-radius: var(--radius-md);
+    margin: var(--space-3) 0;
+}
+
+.hw-warning-title {
+    color: var(--color-warning);
+    font-weight: 600;
+    margin: 0 0 var(--space-1);
+    font-size: var(--fs-sm);
+}
+
+.hw-warning-text {
+    color: var(--color-text-muted);
+    font-size: var(--fs-xs);
+    line-height: var(--lh-base);
+    margin: 0;
+}
+
+.hw-before {
+    color: var(--color-text-subtle);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+}
+
+/* ============================================================================
+   27. Scrollbars
+   ============================================================================ */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-bg-elev-3) transparent;
+}
+
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+    background: var(--color-bg-elev-3);
+    border-radius: var(--radius-pill);
+    border: 2px solid var(--color-bg);
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--color-text-subtle); }
+
+/* ============================================================================
+   27b. Board page panels (settings-overlay = legacy alias for modal-overlay)
+   ============================================================================ */
+.settings-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--color-overlay);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    padding: var(--space-4);
+    padding-top: calc(env(safe-area-inset-top) + var(--space-4));
+    z-index: 1050;
+}
+
+.settings-overlay.visible {
+    display: flex;
+    animation: fadeIn var(--duration-2) var(--easing);
+}
+
+.settings-popup {
+    width: 100%;
+    max-width: 480px;
+    max-height: calc(100vh - 2 * var(--space-4));
+    max-height: calc(100dvh - 2 * var(--space-4));
+    overflow-y: auto;
+    padding: var(--space-5) var(--space-5) var(--space-6);
+    background: var(--color-bg-elev-1);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+}
+
+.settings-popup h3 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin: 0 0 var(--space-4);
+    color: var(--color-text);
+    font-size: var(--fs-lg);
+    text-align: left;
+}
+
+.settings-popup h3 > span { flex: 1; }
+
+.settings-close-btn {
+    width: 36px; height: 36px;
+    border: 1px solid var(--color-border-strong);
+    background: var(--color-bg-elev-2);
+    color: var(--color-text-muted);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    transition: all var(--duration-1) var(--easing);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.settings-close-btn:hover {
+    color: var(--color-text);
+    background: var(--color-bg-elev-3);
+    border-color: var(--color-text-subtle);
+}
+
+.settings-group {
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.settings-group:last-child { border-bottom: 0; padding-bottom: 0; }
+
+.settings-group > label {
+    display: block;
+    margin-bottom: var(--space-2);
+    color: var(--color-text-muted);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    min-height: var(--tap-target);
+}
+
+.piece-theme-row {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+}
+
+.piece-theme-row select { flex: 1; }
+
+.theme-url-display {
+    display: block;
+    margin-top: var(--space-2);
+    font-size: var(--fs-xs);
+    color: var(--color-text-subtle);
+    word-break: break-all;
+}
+
+.promotion-pieces {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+}
+
+.promotion-piece-btn {
+    aspect-ratio: 1;
+    background: var(--color-bg-elev-2);
+    border: 2px solid var(--color-border-strong);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--duration-1) var(--easing);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.promotion-piece-btn:hover {
+    border-color: var(--color-accent);
+    transform: scale(1.05);
+}
+
+.promotion-piece-btn img { width: 70%; height: auto; }
+
+.review-panel {
+    background: var(--color-bg-elev-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-3);
+    margin: var(--space-3) 0;
+}
+
+.review-meta {
+    color: var(--color-text-muted);
+    font-size: var(--fs-xs);
+    margin-bottom: var(--space-2);
+}
+
+.review-moves {
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    line-height: 1.6;
+    color: var(--color-text);
+}
+
+.pgn-segment    { display: inline-flex; align-items: baseline; gap: 4px; margin-right: 6px; }
+.pgn-move-num   { color: var(--color-text-subtle); font-weight: 500; }
+.pgn-move       { color: var(--color-text); padding: 0 2px; border-radius: 4px; cursor: pointer; }
+.pgn-move:hover { background: var(--color-bg-elev-3); }
+.pgn-move.active{ background: var(--color-accent); color: var(--color-text-inverse); }
+.pgn-move-empty { color: var(--color-text-subtle); }
+.pgn-result     { color: var(--color-accent); font-weight: 600; }
+
+.toggle-group {
+    display: inline-flex;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--color-bg-elev-2);
+}
+
+.toggle-btn {
+    padding: 8px 14px;
+    background: transparent;
+    color: var(--color-text-muted);
+    border: 0;
+    cursor: pointer;
+    font-size: var(--fs-sm);
+    font-weight: 500;
+    min-height: 38px;
+    border-right: 1px solid var(--color-border);
+    transition: all var(--duration-1) var(--easing);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.toggle-btn:last-child { border-right: 0; }
+
+.toggle-btn:hover { background: var(--color-bg-elev-3); color: var(--color-text); }
+
+.toggle-btn.active {
+    background: var(--color-accent);
+    color: var(--color-text-inverse);
+    font-weight: 600;
+}
+
+/* Pill variant — individual rounded pills with gaps instead of a
+   connected toggle-group bar. Used by the HvH modal time/color picker
+   for a softer, less form-like look. */
+.option-group.pills {
+    flex-wrap: wrap;
+    gap: 6px;
+    border: 0;
+    background: transparent;
+    overflow: visible;
+}
+.toggle-btn.pill {
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-pill);
+    padding: 6px 14px;
+    min-height: 0;
+    background: var(--color-bg-elev-2);
+    color: var(--color-text);
+    font-size: var(--fs-sm);
+}
+.toggle-btn.pill:hover {
+    background: var(--color-bg-elev-3);
+    border-color: var(--color-text-subtle);
+}
+.toggle-btn.pill.active {
+    background: var(--color-accent);
+    color: var(--color-text-inverse);
+    border-color: var(--color-accent);
+}
+
+.option-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: var(--space-2) 0;
+}
+
+.winner-square {
+    box-shadow: inset 0 0 0 3px var(--color-success);
+}
+
+/* Body's focus-mode toggles a more immersive board-only view */
+body.focus-mode .app-header,
+body.focus-mode .settings-shell-header { display: none; }
+
+/* ============================================================================
+   28. App shell (home page)
+   ============================================================================ */
+.app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+    /* Sticky rounded card; the status pills wrap below the lockup when narrow. */
+    position: sticky;
+    top: var(--space-3);
+    z-index: 100;
+    margin: 0 0 var(--space-5);
+    padding: var(--space-3) var(--space-4);
+    /* CD "small header" look: a rounded, slightly raised dark card. */
+    background: linear-gradient(180deg, var(--color-bg-elev-2), var(--color-bg-elev-1));
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-md);
+    backdrop-filter: blur(6px);
+}
+body.focus-mode .app-header { position: static; }
+
+.app-title {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    line-height: 1;
+    min-width: 0;
+}
+
+/* CD lockup: the P-mark (Bildmarke) + "Priston" + accent-blue "Chess". */
+.pc-wordmark {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: var(--fs-xl);
+    letter-spacing: -0.01em;
+    line-height: 1;
+    color: var(--color-text);
+    white-space: nowrap;
+}
+.pc-wordmark::before {
+    content: "";
+    width: 38px;
+    height: 38px;
+    flex: none;
+    background: url("../icon-512.png") center / cover no-repeat;
+    border-radius: 9px;
+}
+.pc-wordmark b { color: var(--color-accent); font-weight: 700; }
+
+.app-title img {
+    height: 40px;
+    width: auto;
+    display: block;
+    /* PristonChess logo is dark-on-transparent — invert in dark UI so the
+       strokes read in the light text colour. */
+    filter: invert(1);
+    image-rendering: -webkit-optimize-contrast;
+}
+
+@media (prefers-color-scheme: light) {
+    .app-title img { filter: none; }
+}
+
+/* Compact size for the board page where vertical space is tight. */
+header.app-header.compact .app-title img { height: 32px; }
+
+.app-title .visually-hidden {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0);
+    white-space: nowrap; border: 0;
+}
+
+.app-status {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    font-size: var(--fs-xs);
+    font-weight: 500;
+    background: var(--color-bg-elev-2);
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
+    white-space: nowrap;
+}
+
+.status-pill::before {
+    content: "";
+    width: 7px; height: 7px; border-radius: 50%;
+    background: currentColor;
+    opacity: 0.7;
+}
+
+.status-pill.ok       { color: var(--color-success); background: var(--color-success-bg); border-color: var(--color-success); }
+.status-pill.warn     { color: var(--color-warning); background: var(--color-warning-bg); border-color: var(--color-warning); }
+.status-pill.danger   { color: var(--color-danger);  background: var(--color-danger-bg);  border-color: var(--color-danger); }
+
+.quick-actions {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-2);
+    margin-bottom: var(--space-5);
+}
+
+@media (min-width: 600px) {
+    .quick-actions {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+/* Secondary row — 3 small tiles next to each other under the hero. */
+.quick-actions.secondary {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.action-tile {
+    appearance: none;
+    -webkit-appearance: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: 2px;
+    min-height: 96px;
+    padding: var(--space-4);
+    background: linear-gradient(160deg,
+        var(--color-bg-elev-2) 0%, var(--color-bg-elev-1) 100%);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    color: var(--color-text);
+    text-decoration: none;
+    text-align: left;
+    cursor: pointer;
+    font-family: var(--font-sans);
+    position: relative;
+    overflow: hidden;
+    transition: transform var(--duration-1) var(--easing),
+                border-color var(--duration-1) var(--easing),
+                box-shadow var(--duration-1) var(--easing);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.action-tile::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(120px 80px at 100% 0%,
+        var(--color-accent-bg), transparent 60%);
+    opacity: 0;
+    transition: opacity var(--duration-2) var(--easing);
+    pointer-events: none;
+}
+
+.action-tile:hover {
+    border-color: var(--color-accent);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.action-tile:hover::after { opacity: 1; }
+
+.action-tile:active { transform: translateY(0); }
+
+.action-tile .action-icon {
+    width: 22px;
+    height: 22px;
+    margin-bottom: var(--space-3);
+    color: var(--color-text-muted);
+}
+.action-tile .action-icon svg { width: 100%; height: 100%; }
+
+.action-tile .action-label {
+    font-weight: 600;
+    font-size: var(--fs-md);
+    color: var(--color-text);
+}
+
+.action-tile .action-desc {
+    font-size: var(--fs-xs);
+    color: var(--color-text-muted);
+    line-height: 1.3;
+}
+
+/* Hero variant — primary "Spielen" call-to-action. Full-width, large
+   icon, accent gradient, with a chevron CTA on the right. */
+.action-tile.hero {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-5) var(--space-5);
+    background: linear-gradient(135deg,
+        var(--color-accent-bg, rgba(240,192,64,0.12)) 0%,
+        var(--color-bg-elev-3) 60%);
+    border: 1px solid var(--color-accent, #f0c040);
+    box-shadow: 0 0 0 1px rgba(240,192,64,0.18),
+                var(--shadow-md);
+    min-height: 110px;
+}
+.action-tile.hero .action-icon {
+    font-size: 44px;
+    margin-bottom: 0;
+    color: var(--color-accent, #f0c040);
+    flex-shrink: 0;
+}
+.action-tile.hero .action-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+}
+.action-tile.hero .action-label {
+    font-size: var(--fs-xl, 22px);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+.action-tile.hero .action-desc {
+    font-size: var(--fs-sm);
+    color: var(--color-text-muted);
+}
+.action-tile.hero .action-cta {
+    font-size: 32px;
+    color: var(--color-accent, #f0c040);
+    line-height: 1;
+}
+
+/* Compact secondary tiles — same row, icon over label, half height. */
+.quick-actions.secondary {
+    margin-top: var(--space-2);
+}
+.action-tile.compact {
+    min-height: 64px;
+    padding: var(--space-3);
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    flex-direction: column;
+    gap: 4px;
+}
+.action-tile.compact .action-icon {
+    font-size: 22px;
+    margin-bottom: 0;
+}
+.action-tile.compact .action-label {
+    font-size: var(--fs-sm);
+}
+
+.settings-shell-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: var(--space-5) 0 var(--space-2);
+    padding: 0 var(--space-1);
+}
+
+.settings-shell-header h2 {
+    font-size: var(--fs-md);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 0;
+    background: none;
+    -webkit-text-fill-color: initial;
+    color: var(--color-text-muted);
+}
+
+.settings-shell-header .text-subtle {
+    font-size: var(--fs-xs);
+}
+
+.system-card {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-2) var(--space-4);
+    align-items: center;
+    padding: var(--space-4);
+    background: var(--color-bg-elev-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-4);
+    font-size: var(--fs-sm);
+}
+
+.system-card dt {
+    color: var(--color-text-muted);
+    font-weight: 500;
+}
+
+.system-card dd {
+    margin: 0;
+    color: var(--color-text);
+    font-family: var(--font-mono);
+    overflow-wrap: anywhere;
+}
+
+/* ============================================================================
+   29. Misc helpers
+   ============================================================================ */
+.hidden { display: none !important; }
+.text-muted { color: var(--color-text-muted); }
+.text-subtle { color: var(--color-text-subtle); }
+.mono { font-family: var(--font-mono); }
+
+/* ============================================================================
+   Modern refinements
+   ============================================================================ */
+
+:root {
+    /* Brand-tinted native controls (checkboxes, radios, range, progress). */
+    accent-color: var(--color-accent);
+
+    /* Fluid display typography — headings scale smoothly between phone and
+       desktop instead of stepping. Body sizes stay fixed for readability. */
+    --fs-xl:  clamp(20px, 1.05rem + 0.7vw, 24px);
+    --fs-2xl: clamp(26px, 1.30rem + 1.4vw, 32px);
+}
+
+/* App-like scrolling: no pull-to-refresh or rubber-band chaining to the page. */
+html { overscroll-behavior: none; }
+
+/* Honour an explicit high-contrast preference by strengthening borders/text. */
+@media (prefers-contrast: more) {
+    :root {
+        --color-border:        rgba(255, 255, 255, 0.28);
+        --color-border-strong: rgba(255, 255, 255, 0.45);
+        --color-text-muted:    #c2c9d6;
+        --color-text-subtle:   #9aa3b4;
+    }
+}
+
+/* ============================================================================
+   Light theme — automatic via the OS setting (prefers-color-scheme: light).
+   Token-driven: only the palette is overridden, so every component that uses
+   the design tokens re-themes for free.
+   ============================================================================ */
+@media (prefers-color-scheme: light) {
+    :root {
+        /* Surfaces */
+        --color-bg:            #eef1f6;
+        --color-bg-elev-1:     #ffffff;
+        --color-bg-elev-2:     #f4f6fa;
+        --color-bg-elev-3:     #e7ebf2;
+        --color-border:        rgba(15, 23, 42, 0.10);
+        --color-border-strong: rgba(15, 23, 42, 0.20);
+        --color-overlay:       rgba(15, 23, 42, 0.45);
+
+        /* Text */
+        --color-text:          #14181f;
+        --color-text-muted:    #515b6b;
+        --color-text-subtle:   #7a8494;
+        --color-text-inverse:  #ffffff;
+
+        /* Accent — CD blue, slightly deepened for contrast on white */
+        --color-accent:        #2f6fe0;
+        --color-accent-soft:   #4D8CFF;
+        --color-accent-bg:     rgba(45, 111, 224, 0.14);
+        --color-accent-ring:   rgba(45, 111, 224, 0.40);
+
+        /* Semantic — deepened foregrounds for light backgrounds */
+        --color-success:       #15935f;
+        --color-success-bg:    rgba(21, 147, 95, 0.14);
+        --color-danger:        #d63d3d;
+        --color-danger-bg:     rgba(214, 61, 61, 0.14);
+        --color-warning:       #b7791f;
+        --color-warning-bg:    rgba(183, 121, 31, 0.16);
+        --color-info:          #2563eb;
+        --color-info-bg:       rgba(37, 99, 235, 0.14);
+
+        /* Softer shadows on light surfaces */
+        --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.10);
+        --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.10),
+                     0 1px 2px rgba(15, 23, 42, 0.08);
+        --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.14),
+                     0 4px 8px rgba(15, 23, 42, 0.08);
+    }
+
+    html { color-scheme: light; }
+
+    body {
+        background:
+            radial-gradient(1200px 600px at 50% -10%,
+                            rgba(77, 140, 255, 0.10), transparent 60%),
+            var(--color-bg);
+    }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}

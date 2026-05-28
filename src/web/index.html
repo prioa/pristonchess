@@ -1,0 +1,1550 @@
+<!doctype html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0f1115">
+    <title>PristonChess</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+    <link rel="stylesheet" href="./css/styles.css">
+    <style>
+        /* ---- Primary actions: two equally important entry points
+           (Spielen, Lernen) side-by-side on tablets/desktop, stacked
+           on phones. Each is a vertical tile with a big icon. ------- */
+        .primary-actions {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: var(--space-3);
+            margin: var(--space-3) 0 var(--space-4);
+        }
+        @media (min-width: 520px) {
+            .primary-actions { grid-template-columns: 1fr 1fr; }
+        }
+        .primary-tile {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: var(--space-3);
+            padding: var(--space-5);
+            background: linear-gradient(160deg, var(--color-bg-elev-3), var(--color-bg-elev-2));
+            border: 1px solid var(--color-border-strong);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
+            color: var(--color-text);
+            text-decoration: none;
+            min-height: 132px;
+            transition: background var(--duration-1) var(--easing),
+                        border-color var(--duration-1) var(--easing),
+                        transform var(--duration-1) var(--easing);
+        }
+        .primary-tile:hover {
+            background: var(--color-bg-elev-3);
+            border-color: var(--color-accent);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        .primary-tile .pt-icon {
+            width: 44px;
+            height: 44px;
+            display: inline-flex;
+        }
+        .primary-tile .pt-icon svg { width: 100%; height: 100%; }
+        .primary-tile .pt-label {
+            display: block;
+            font-size: 1.3rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+        }
+        .primary-tile .pt-desc {
+            display: block;
+            font-size: var(--fs-xs);
+            color: var(--color-text-muted);
+            margin-top: 2px;
+        }
+        .primary-tile.spielen .pt-icon { color: var(--color-accent); }
+        .primary-tile.lernen  .pt-icon { color: var(--color-success); }
+
+        /* ---- Quick actions: small icon strip, secondary -------------- */
+        .quick-actions.secondary {
+            display: flex;
+            gap: var(--space-2);
+            flex-wrap: wrap;
+            margin-bottom: var(--space-4);
+        }
+        .quick-actions.secondary .action-tile.compact {
+            flex: 1;
+            min-width: 80px;
+            padding: 10px 6px;
+            font-size: var(--fs-xs);
+        }
+        .quick-actions.secondary .action-tile.compact .action-icon {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* Subtle system-info footer: flex row with separators, no card. */
+        .system-footer {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-2) var(--space-4);
+            margin: var(--space-5) 0 var(--space-3);
+            padding: var(--space-2) 0;
+            border-top: 1px dashed var(--color-border);
+            font-size: var(--fs-xs);
+            color: var(--color-text-muted);
+            font-family: var(--font-mono);
+        }
+        .system-footer .sf-label {
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--color-text-subtle);
+            margin-right: 4px;
+        }
+
+        /* Top-level "Einstellungen" disclosure — wraps every settings
+           sub-section so the home page is calm by default; one click
+           reveals everything (WiFi, Lichess, LEDs, GPIO, OTA, Tests). */
+        .settings-disclosure {
+            margin-top: var(--space-5);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            background: var(--color-bg-elev-2);
+            overflow: hidden;
+        }
+        .settings-disclosure-summary {
+            list-style: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            padding: var(--space-3) var(--space-4);
+            transition: background var(--duration-1) var(--easing);
+        }
+        .settings-disclosure-summary::-webkit-details-marker { display: none; }
+        .settings-disclosure-summary::after {
+            content: "›";
+            margin-left: auto;
+            font-size: 22px;
+            color: var(--color-text-muted);
+            transition: transform var(--duration-1) var(--easing);
+        }
+        .settings-disclosure[open] .settings-disclosure-summary::after {
+            transform: rotate(90deg);
+        }
+        .settings-disclosure-summary:hover {
+            background: var(--color-bg-elev-3);
+        }
+        .settings-disclosure .sd-icon {
+            font-size: 20px;
+        }
+        .settings-disclosure .sd-text {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.15;
+            min-width: 0;
+        }
+        .settings-disclosure .sd-title {
+            font-size: var(--fs-md);
+            font-weight: 700;
+            color: var(--color-text);
+            letter-spacing: -0.01em;
+        }
+        .settings-disclosure .sd-hint {
+            font-size: var(--fs-xs);
+            color: var(--color-text-muted);
+        }
+        .settings-disclosure[open] {
+            padding-bottom: var(--space-4);
+        }
+        .settings-disclosure .settings-section {
+            margin: 0 var(--space-3) var(--space-3);
+            background: var(--color-bg-elev-3);
+        }
+        .settings-disclosure .settings-debug-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 var(--space-3);
+            min-height: var(--tap-target);
+            padding: var(--space-3);
+            background: var(--color-bg-elev-3);
+            border: 1px solid var(--color-border-strong);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
+            color: var(--color-text-muted);
+            font-size: var(--fs-sm);
+            text-decoration: none;
+            transition: background var(--duration-1) var(--easing),
+                        color var(--duration-1) var(--easing);
+        }
+        .settings-disclosure .settings-debug-link:hover,
+        .settings-disclosure .settings-debug-link:active {
+            background: var(--color-bg-elev-2);
+            color: var(--color-text);
+        }
+    </style>
+    <script src="./scripts/app.js"></script>
+</head>
+
+<body>
+    <main class="container">
+        <!-- App header ------------------------------------------------------ -->
+        <header class="app-header">
+            <a href="./index.html" style="text-decoration:none; color:inherit;">
+                <h1 class="app-title">
+                    <span class="pc-wordmark">Priston<b>Chess</b></span>
+                    <span class="visually-hidden">PristonChess</span>
+                </h1>
+            </a>
+            <div class="app-status">
+                <span class="status-pill" id="modeStatusPill">Bereit</span>
+            </div>
+        </header>
+
+        <!-- Two equal-rank primary actions: start a game OR drill an opening. -->
+        <section class="primary-actions" aria-label="Hauptaktionen">
+            <a href="./game.html" class="primary-tile spielen">
+                <span class="pt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16l15-8z"/></svg></span>
+                <span>
+                    <span class="pt-label">Spielen</span>
+                    <span class="pt-desc">Modus wählen &amp; Partie starten</span>
+                </span>
+            </a>
+            <a href="./learn.html" class="primary-tile lernen">
+                <span class="pt-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1.5 2.7 2.5 6 2.5s6-1 6-2.5v-5"/></svg></span>
+                <span>
+                    <span class="pt-label">Lernen</span>
+                    <span class="pt-desc">Eröffnungen mit LED-Anleitung üben</span>
+                </span>
+            </a>
+        </section>
+
+        <!-- Secondary quick actions — small icon strip below the heros. -->
+        <section class="quick-actions secondary" aria-label="Weitere Bereiche">
+            <a href="./players.html" class="action-tile compact">
+                <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 19v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="3"/><path d="M22 19v-2a4 4 0 0 0-3-3.87"/><path d="M16 4.13a4 4 0 0 1 0 7.75"/></svg></span>
+                <span class="action-label">Spieler</span>
+            </a>
+            <a href="./board.html" class="action-tile compact">
+                <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></span>
+                <span class="action-label">Brett</span>
+            </a>
+        </section>
+
+        <!-- Leaderboard teaser --------------------------------------------- -->
+        <section class="settings-shell-header">
+            <h2>Rangliste</h2>
+            <a href="./players.html" class="text-subtle text-muted"
+               style="text-decoration:none;">Alle &rsaquo;</a>
+        </section>
+        <div class="option-group pills" id="homeLeaderSort"
+             style="margin-bottom: var(--space-3);">
+            <button type="button" class="toggle-btn pill active" data-sort="wins">Siege</button>
+            <button type="button" class="toggle-btn pill" data-sort="elo">ELO</button>
+        </div>
+        <ol class="leader-list" id="homeLeader"
+            style="list-style:none; margin:0 0 var(--space-4); padding:0;
+                   display:grid; grid-template-columns:1fr; gap:var(--space-2);">
+            <li class="empty-state" style="
+                padding: var(--space-4); text-align: center;
+                color: var(--color-text-muted); font-size: var(--fs-sm);
+                background: var(--color-bg-elev-2);
+                border: 1px dashed var(--color-border-strong);
+                border-radius: var(--radius-lg);">Lade…</li>
+        </ol>
+
+        <!-- System status — small one-line footer instead of a card. -->
+        <div class="system-footer" id="systemCard">
+            <span><span class="sf-label">Status</span> <span id="sysMode">Idle</span></span>
+            <span><span class="sf-label">WiFi</span> <span id="sysWifi">—</span></span>
+            <span><span class="sf-label">IP</span> <span id="sysIp">—</span></span>
+            <span><span class="sf-label">Host</span> pristonchess.local</span>
+        </div>
+
+        <!-- Settings shell — collapsed by default. All advanced sub-sections
+             (WiFi, Lichess, Board, GPIO, OTA) live inside the
+             single <details> so the home page stays focused on quick actions
+             + leaderboard unless the user explicitly opens settings. -->
+        <details class="settings-disclosure">
+            <summary class="settings-disclosure-summary">
+                <span class="sd-icon">⚙</span>
+                <span class="sd-text">
+                    <span class="sd-title">Einstellungen</span>
+                    <span class="sd-hint">WiFi · Lichess · LEDs …</span>
+                </span>
+            </summary>
+
+        <!-- WiFi Settings Section -->
+        <div class="settings-section">
+            <div class="section-header" onclick="toggleSection('wifi')">
+                <span class="section-icon" id="wifi-icon">▶</span>
+                <h3>WiFi</h3>
+            </div>
+            <div class="section-content" id="wifi-content">
+                <div class="toggle-row toggle-row-divider">
+                    <div>
+                        <label class="toggle-label" for="scanAllChannels">Scan All WiFi Channels</label>
+                        <p class="toggle-description">
+                            Enable for mesh networks (+10s connection time)
+                        </p>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="scanAllChannels">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <label style="margin-bottom: 5px;">Saved Networks</label>
+                <div class="network-list" id="savedNetworks">
+                    <div class="network-item" style="color: #888; text-align: center;">Loading...</div>
+                </div>
+
+                <label style="margin-top: 12px; margin-bottom: 5px;">Available Networks</label>
+                <div class="network-list" id="scannedNetworks">
+                    <div class="network-item" style="color: #888; text-align: center;">No scan results</div>
+                </div>
+                <button type="button" id="scanBtn" class="button" style="background-color: #4CAF50; margin-top: 16px;">
+                    Scan for Networks
+                </button>
+            </div>
+        </div>
+
+        <!-- Lichess Settings Section -->
+        <div class="settings-section">
+            <div class="section-header" onclick="toggleSection('lichess')">
+                <span class="section-icon" id="lichess-icon">▶</span>
+                <h3>Lichess</h3>
+            </div>
+            <div class="section-content" id="lichess-content">
+                <p class="section-description">
+                    Play Lichess games on your physical board.
+                    <a href="https://lichess.org/account/oauth/token" target="_blank" style="color: #ec8703;">
+                        Get your API token here
+                    </a>
+                </p>
+                <div class="lichess-status" id="lichess-status">
+                    <span id="lichess-token-status">No token configured</span>
+                </div>
+                <form id="lichessForm">
+                    <div class="form-group">
+                        <label for="lichessToken">API Token:</label>
+                        <input type="text" name="lichessToken" id="lichessToken" value=""
+                            placeholder="lip_xxxxxxxxxxxxx">
+                    </div>
+                    <input type="submit" style="background-color: #4CAF50;" value="Save Lichess Token">
+                </form>
+            </div>
+        </div>
+
+        <!-- Board Settings Section -->
+        <div class="settings-section">
+            <div class="section-header" onclick="toggleSection('board')">
+                <span class="section-icon" id="board-icon">▶</span>
+                <h3>LEDs & Board</h3>
+            </div>
+            <div class="section-content" id="board-content">
+                <p class="section-description">
+                    Adjust the LED brightness and dark square dimming for your chess board.
+                </p>
+                <form id="boardSettingsForm">
+                    <div class="form-group">
+                        <label for="brightness">LED Brightness: <span id="brightness-value"
+                                style="color: #ec8703;">255</span></label>
+                        <input type="range" id="brightness" name="brightness" min="10" max="255" value="255"
+                            class="slider-input">
+                    </div>
+                    <div class="form-group">
+                        <label for="dimMultiplier">Dark Square Dimming: <span id="dim-value"
+                                style="color: #ec8703;">70%</span></label>
+                        <input type="range" id="dimMultiplier" name="dimMultiplier" min="20" max="100" value="70"
+                            class="slider-input">
+                    </div>
+                    <div class="form-group">
+                        <label for="idleAnimation">Idle Animation</label>
+                        <select id="idleAnimation" name="idleAnimation" style="width:100%;padding:8px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#fff;font-size:14px;">
+                            <option value="0">🌈 Rainbow Wave</option>
+                            <option value="1">💧 Breathing</option>
+                            <option value="2">☄️ Comet Chase</option>
+                            <option value="3">✨ Twinkle</option>
+                            <option value="4">⬛ Solid Color</option>
+                            <option value="5">⚫ Off</option>
+                            <option value="6">🔥 Fire</option>
+                            <option value="7">🌊 Plasma</option>
+                            <option value="8">🌠 Meteor Shower</option>
+                            <option value="9">♟️ Chess Pulse</option>
+                            <option value="10">🎨 Color Cycle</option>
+                            <option value="11">🔦 Scan</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="idleColor">Primary Color <span style="font-size:11px;color:#888;">(Breathing · Chase · Twinkle · Solid · Fire · Plasma · Meteor · Scan)</span></label>
+                        <input type="color" id="idleColor" name="idleColor" value="#ffffff"
+                            style="width:100%;height:40px;border-radius:6px;border:1px solid #444;background:#2a2a2a;cursor:pointer;padding:3px 4px;">
+                    </div>
+                    <div class="form-group">
+                        <label for="idleColor2">Secondary Color <span style="font-size:11px;color:#888;">(Chess Pulse)</span></label>
+                        <input type="color" id="idleColor2" name="idleColor2" value="#ff8000"
+                            style="width:100%;height:40px;border-radius:6px;border:1px solid #444;background:#2a2a2a;cursor:pointer;padding:3px 4px;">
+                    </div>
+                    <div class="form-group">
+                        <label for="animSpeed">Animation Speed: <span id="animSpeed-value" style="color:#ec8703;">1.0×</span></label>
+                        <input type="range" id="animSpeed" name="animSpeed" min="25" max="400" value="100" step="25" class="slider-input">
+                    </div>
+                    <div class="form-group">
+                        <label for="idleSaturation">Color Saturation: <span id="idleSat-value" style="color:#ec8703;">100%</span></label>
+                        <input type="range" id="idleSaturation" name="idleSaturation" min="0" max="100" value="100" class="slider-input">
+                    </div>
+                    <div class="form-group" style="display:flex;align-items:center;gap:12px;">
+                        <label style="flex:1;margin:0;">Auto-Dim at Night</label>
+                        <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;">
+                            <input type="checkbox" id="autoDim" name="autoDim" style="opacity:0;width:0;height:0;position:absolute;">
+                            <span id="autoDimToggle" onclick="toggleAutoDim()" style="position:absolute;inset:0;background:#444;border-radius:12px;cursor:pointer;transition:background .2s;">
+                                <span id="autoDimKnob" style="position:absolute;left:2px;top:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:left .2s;"></span>
+                            </span>
+                        </label>
+                    </div>
+                    <div id="autoDimOptions" style="display:none;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                            <div class="form-group" style="margin:0;">
+                                <label for="autoDimStart">Dim from (h)</label>
+                                <input type="number" id="autoDimStart" name="autoDimStart" min="0" max="23" value="22"
+                                    style="width:100%;padding:6px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#fff;font-size:14px;text-align:center;">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label for="autoDimEnd">Dim until (h)</label>
+                                <input type="number" id="autoDimEnd" name="autoDimEnd" min="0" max="23" value="7"
+                                    style="width:100%;padding:6px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#fff;font-size:14px;text-align:center;">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="autoDimBrightness">Night Brightness: <span id="autoDimBri-value" style="color:#ec8703;">60</span></label>
+                            <input type="range" id="autoDimBrightness" name="autoDimBrightness" min="10" max="200" value="60" class="slider-input">
+                        </div>
+                    </div>
+                    <input type="submit" style="background-color: #4CAF50;" value="Save LED Settings">
+                </form>
+                <div class="hr-divider"></div>
+                <p class="section-description" style="margin: 0;">
+                    Run board calibration to map LEDs and sensors to the correct squares.
+                </p>
+                <button type="button" id="calibrateBtn" class="button" style="background-color: #f44336;">
+                    Start Board Calibration
+                </button>
+
+            </div>
+        </div>
+
+        <!-- Move-highlight colours (web; applied to the board highlights) -->
+        <div class="settings-section">
+            <div class="section-header" onclick="toggleSection('hlcolors')">
+                <span class="section-icon" id="hlcolors-icon">▶</span>
+                <h3>Zug-Highlight-Farben</h3>
+            </div>
+            <div class="section-content" id="hlcolors-content">
+                <p class="section-description">
+                    Farben der Feld-Hervorhebungen beim Ziehen. Gelten in Simulation und Spielansicht.
+                </p>
+                <div class="form-group">
+                    <label for="hlSource">Ausgewählte Figur (Ursprung)</label>
+                    <input type="color" id="hlSource" value="#f0c040" style="width:100%;height:40px;border-radius:6px;border:1px solid #444;background:#2a2a2a;cursor:pointer;padding:3px 4px;">
+                </div>
+                <div class="form-group">
+                    <label for="hlTarget">Legale Zielfelder</label>
+                    <input type="color" id="hlTarget" value="#2ed573" style="width:100%;height:40px;border-radius:6px;border:1px solid #444;background:#2a2a2a;cursor:pointer;padding:3px 4px;">
+                </div>
+                <div class="form-group">
+                    <label for="hlCapture">Schlagfelder <span style="font-size:11px;color:#888;">(nur LEDs)</span></label>
+                    <input type="color" id="hlCapture" value="#ff3030" style="width:100%;height:40px;border-radius:6px;border:1px solid #444;background:#2a2a2a;cursor:pointer;padding:3px 4px;">
+                </div>
+                <div class="form-group">
+                    <label for="hlInvalid">Ungültig (blinkt rot)</label>
+                    <input type="color" id="hlInvalid" value="#e74c3c" style="width:100%;height:40px;border-radius:6px;border:1px solid #444;background:#2a2a2a;cursor:pointer;padding:3px 4px;">
+                </div>
+                <div class="form-group">
+                    <label for="hlValid">Gültig (blinkt grün)</label>
+                    <input type="color" id="hlValid" value="#2ed573" style="width:100%;height:40px;border-radius:6px;border:1px solid #444;background:#2a2a2a;cursor:pointer;padding:3px 4px;">
+                </div>
+                <button type="button" id="hlResetBtn" class="button" style="background:transparent;border:1px solid var(--color-border-strong);">Auf Standard zurücksetzen</button>
+            </div>
+        </div>
+
+        <!-- Hardware GPIO Configuration Section -->
+        <div class="settings-section">
+            <div class="section-header" onclick="toggleSection('hwconfig')">
+                <span class="section-icon" id="hwconfig-icon">▶</span>
+                <h3>GPIO</h3>
+            </div>
+            <div class="section-content" id="hwconfig-content">
+
+                <!-- Warning Banner -->
+                <div class="hw-warning-banner">
+                    <div class="hw-warning-title">⚡ Short Circuit Risk</div>
+                    <div class="hw-warning-text">
+                        Set the correct pins and transistor type (PNP/NPN)
+                        <span class="hw-before">BEFORE</span>
+                        connecting wires to GPIOs. Incorrect configuration with wires connected can cause short
+                        circuits.
+                    </div>
+                </div>
+
+                <form id="hwConfigForm">
+
+                    <!-- LED Strip + Shift Register merged card -->
+                    <div class="hw-section">
+                        <div class="hw-section-title-split">
+                            <span class="hw-section-title-split-sr">Shift Register</span>
+                            <span class="hw-section-title-split-led">LED Strip</span>
+                        </div>
+                        <div class="hw-section-body">
+                            <div class="hw-top-pins">
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-srClkPin">SRCLK</label>
+                                    <input type="number" id="hw-srClkPin" min="0" max="39"
+                                        class="hw-gpio-input hw-gpio-input-sr" placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-srLatchPin">RCLK</label>
+                                    <input type="number" id="hw-srLatchPin" min="0" max="39"
+                                        class="hw-gpio-input hw-gpio-input-sr" placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-srDataPin">SER</label>
+                                    <input type="number" id="hw-srDataPin" min="0" max="39"
+                                        class="hw-gpio-input hw-gpio-input-sr" placeholder="—">
+                                </div>
+                                <div class="hw-top-pins-divider"></div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-ledPin">DIN</label>
+                                    <input type="number" id="hw-ledPin" min="0" max="39"
+                                        class="hw-gpio-input hw-gpio-input-sr" placeholder="—">
+                                </div>
+                            </div>
+
+                            <div class="hr-divider"></div>
+
+                            <div class="hw-transistor-row">
+                                <div class="hw-transistor-info">
+                                    <label class="toggle-label">Transistor Type</label>
+                                    <p class="toggle-description">Invert Shift Register outputs for PNP</p>
+                                </div>
+                                <div class="hw-npn-pnp-toggle">
+                                    <span class="hw-transistor-label" id="hw-npn-label">NPN</span>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="hw-srInvert" onchange="updateTransistorLabels(this)">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="hw-transistor-label" id="hw-pnp-label">PNP</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Row Inputs Section -->
+                    <div class="hw-section">
+                        <div class="hw-section-title">Row Inputs</div>
+                        <div class="hw-section-body">
+                            <div class="hw-row-pins">
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-row0">Row 0</label>
+                                    <input type="number" id="hw-row0" min="0" max="39" class="hw-gpio-input"
+                                        placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-row1">Row 1</label>
+                                    <input type="number" id="hw-row1" min="0" max="39" class="hw-gpio-input"
+                                        placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-row2">Row 2</label>
+                                    <input type="number" id="hw-row2" min="0" max="39" class="hw-gpio-input"
+                                        placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-row3">Row 3</label>
+                                    <input type="number" id="hw-row3" min="0" max="39" class="hw-gpio-input"
+                                        placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-row4">Row 4</label>
+                                    <input type="number" id="hw-row4" min="0" max="39" class="hw-gpio-input"
+                                        placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-row5">Row 5</label>
+                                    <input type="number" id="hw-row5" min="0" max="39" class="hw-gpio-input"
+                                        placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-row6">Row 6</label>
+                                    <input type="number" id="hw-row6" min="0" max="39" class="hw-gpio-input"
+                                        placeholder="—">
+                                </div>
+                                <div class="hw-field">
+                                    <label class="hw-field-label" for="hw-row7">Row 7</label>
+                                    <input type="number" id="hw-row7" min="0" max="39" class="hw-gpio-input"
+                                        placeholder="—">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <input type="submit" style="background-color: #4CAF50;" value="Save & Reboot">
+                </form>
+            </div>
+        </div>
+
+        <!-- OTA Updates Section -->
+        <div class="settings-section">
+            <div class="section-header" onclick="toggleSection('ota')">
+                <span class="section-icon" id="ota-icon">▶</span>
+                <h3>Updates</h3>
+            </div>
+            <div class="section-content" id="ota-content">
+                <div class="toggle-row toggle-row-divider">
+                    <div>
+                        <label class="toggle-label" for="autoOtaToggle">Automatic Updates</label>
+                        <p class="toggle-description">
+                            Install new versions automatically when available
+                        </p>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="autoOtaToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="ota-version-info" id="ota-version-info">
+                    <div class="ota-version-row">
+                        <span>Current version:</span>
+                        <strong id="current-version">loading...</strong>
+                    </div>
+                    <div class="ota-version-row">
+                        <span>Latest version:</span>
+                        <a id="latest-version" href="#" target="_blank">loading...</a>
+                    </div>
+                </div>
+
+                <div class="ota-manual-section">
+                    <p class="section-description" style="margin-bottom: 5px;">
+                        Manual update: drag & drop firmware (.bin) or web assets (.tar) files below.
+                    </p>
+                    <div class="ota-drop-zone" id="otaDropZone">
+                        <div class="ota-drop-icon">📦</div>
+                        <div class="ota-drop-text">Drop <strong>.bin</strong> (firmware) or <strong>.tar</strong> (web
+                            assets) here</div>
+                        <div class="ota-drop-subtext">or click to select a file</div>
+                        <input type="file" id="otaFileInput" accept=".bin,.tar" style="display:none;">
+                    </div>
+                    <div id="ota-upload-progress" class="ota-upload-progress" style="display:none;">
+                        <div class="ota-progress-bar">
+                            <div class="ota-progress-fill" id="otaProgressFill"></div>
+                        </div>
+                        <span id="ota-progress-text">Uploading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <a href="./debug.html" class="settings-debug-link">Debug-Ansicht</a>
+
+        </details>
+
+        <!-- Update Available Popup Overlay (force-hidden — we don't pull
+             upstream OpenChess releases since this is a fork. The element
+             stays in the DOM because the JS still references its sub-IDs.) -->
+        <div class="update-overlay" id="updateOverlay" style="display:none !important;">
+            <div class="update-popup">
+                <h3>Update Available</h3>
+                <p>A new version of OpenChess is available:</p>
+                <div class="update-popup-versions">
+                    <span>Current: <strong id="popup-current-version"></strong></span>
+                    <span class="update-arrow">→</span>
+                    <span>New: <a id="popup-new-version" href="#" target="_blank"></a></span>
+                </div>
+                <div class="update-popup-actions">
+                    <button type="button" id="updateNowBtn" class="button"
+                        style="background-color: #4CAF50; margin: 5px 0;">Update Now</button>
+                    <button type="button" id="updateLaterBtn" class="button"
+                        style="background-color: #666; margin: 5px 0;">Later</button>
+                </div>
+                <div id="update-popup-status" class="update-popup-status" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Custom Modal -->
+        <div class="modal-overlay" id="modalOverlay">
+            <div class="modal-box">
+                <p id="modalMessage"></p>
+                <input type="text" id="modalInput" style="display:none;" autocomplete="off">
+                <div class="modal-actions">
+                    <button type="button" id="modalOkBtn" class="button"
+                        style="background-color: #4CAF50; margin: 5px 0;">Confirm</button>
+                    <button type="button" id="modalCancelBtn" class="button"
+                        style="background-color: #666; margin: 5px 0;">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // Header WiFi/IP pill + system card — delegates to the shared PC helper.
+        async function refreshStatus() { if (window.PC) await PC.refreshWifiPill(); }
+
+        // Simulation lives on the "Spielen" page (game.html) — not on the home screen.
+
+        // User-chosen leaderboard sort, persisted across reloads.
+        let _homeSort = localStorage.getItem('pcLeaderSort') || 'wins';
+        function _primaryRating(p) {
+            const r = p.ratings || {};
+            return (r.rapid  > 0) ? r.rapid  :
+                   (r.blitz  > 0) ? r.blitz  :
+                   (r.bullet > 0) ? r.bullet :
+                   (r.daily  > 0) ? r.daily  :
+                   (p.elo    > 0) ? p.elo    : 0;
+        }
+
+        async function refreshLeaderboard() {
+            try {
+                const r = await fetch('./api/profiles', { cache: 'no-store' });
+                if (!r.ok) throw new Error();
+                const j = await r.json();
+                const list = (j && j.profiles) ? j.profiles.slice() : [];
+                const esc = s => (s||'').replace(/[&<>"']/g, c =>
+                    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+                const score = p => {
+                    const w=(p.stats&&p.stats.wins)||0;
+                    const l=(p.stats&&p.stats.losses)||0;
+                    const d=(p.stats&&p.stats.draws)||0;
+                    return {w,l,d};
+                };
+                if (_homeSort === 'elo') {
+                    list.sort((a,b)=>{
+                        const ea = _primaryRating(a), eb = _primaryRating(b);
+                        return eb - ea || a.name.localeCompare(b.name);
+                    });
+                } else {
+                    list.sort((a,b)=>{
+                        const sa=score(a), sb=score(b);
+                        return sb.w-sa.w || sa.l-sb.l || sb.d-sa.d ||
+                               a.name.localeCompare(b.name);
+                    });
+                }
+                const top = list.slice(0, 3);
+                const el = document.getElementById('homeLeader');
+                if (top.length === 0) {
+                    el.innerHTML = '<li class="empty-state" style="padding: var(--space-4); text-align: center; color: var(--color-text-muted); font-size: var(--fs-sm); background: var(--color-bg-elev-2); border: 1px dashed var(--color-border-strong); border-radius: var(--radius-lg);">Noch keine Spieler. <a href="./players.html">Lege jetzt einen an &rsaquo;</a></li>';
+                    return;
+                }
+                const medals = ['gold', 'silver', 'bronze'];
+                el.innerHTML = top.map((p,i) => {
+                    const s = score(p);
+                    const colorBg = p.color
+                        ? 'background:'+esc(p.color)+'26;color:'+esc(p.color)+';'
+                        : '';
+                    // Pick the user's "primary" rating: rapid first (the
+                    // chess.com default), then blitz/bullet/daily if rapid
+                    // isn't set. Shown as a compact mono chip beside the name.
+                    const r = p.ratings || {};
+                    const primary =
+                        (r.rapid  > 0) ? ['rapid',  r.rapid]  :
+                        (r.blitz  > 0) ? ['blitz',  r.blitz]  :
+                        (r.bullet > 0) ? ['bullet', r.bullet] :
+                        (r.daily  > 0) ? ['daily',  r.daily]  :
+                        (p.elo    > 0) ? ['rapid',  p.elo]    : null;
+                    const eloChip = primary
+                        ? '<span style="display:inline-flex;align-items:center;gap:4px;'
+                        + 'margin-left:6px;padding:2px 7px;border-radius:999px;'
+                        + 'font-family:var(--font-mono);font-size:10px;font-weight:600;'
+                        + 'background:rgba(240,192,64,0.10);color:#f0c040;'
+                        + 'border:1px solid rgba(240,192,64,0.25);" title="chess.com '
+                        + esc(primary[0]) + '">'
+                        + '<span style="text-transform:uppercase;font-size:8px;'
+                        + 'letter-spacing:0.05em;opacity:0.7;">' + esc(primary[0])
+                        + '</span>' + primary[1] + '</span>'
+                        : '';
+                    return `
+                    <li style="
+                        display:flex; align-items:center; gap:var(--space-3);
+                        padding:var(--space-3);
+                        background:var(--color-bg-elev-2);
+                        border:1px solid var(--color-border);
+                        border-radius:var(--radius-lg);">
+                        <span style="
+                            width:28px; text-align:center; font-family:var(--font-mono);
+                            font-weight:700; font-size:var(--fs-md);
+                            color:${i===0?'#ffd166':i===1?'#c9d1d9':'#d7995a'};">${i+1}</span>
+                        <span style="
+                            width:36px; height:36px; border-radius:50%;
+                            display:flex; align-items:center; justify-content:center;
+                            font-size:18px; ${colorBg}">${esc(p.avatar||'♟')}</span>
+                        <span style="flex:1; min-width:0;">
+                            <strong style="display:block; color:var(--color-text);
+                                          font-size:var(--fs-md); overflow:hidden;
+                                          text-overflow:ellipsis; white-space:nowrap;
+                                          ">${esc(p.name)}${eloChip}</strong>
+                            <span style="font-family:var(--font-mono);
+                                         font-size:var(--fs-xs);
+                                         color:var(--color-text-muted);">
+                                ${s.w}S &middot; ${s.l}N &middot; ${s.d}R
+                            </span>
+                        </span>
+                    </li>`;
+                }).join('');
+            } catch (e) {
+                document.getElementById('homeLeader').innerHTML =
+                    '<li class="empty-state" style="padding: var(--space-4); text-align: center; color: var(--color-text-muted); font-size: var(--fs-sm); background: var(--color-bg-elev-2); border: 1px dashed var(--color-border-strong); border-radius: var(--radius-lg);">Konnte Rangliste nicht laden.</li>';
+            }
+        }
+
+        // Wire the leaderboard sort pills.
+        document.querySelectorAll('#homeLeaderSort .toggle-btn').forEach(btn => {
+            if (btn.dataset.sort === _homeSort) btn.classList.add('active');
+            else                                btn.classList.remove('active');
+            btn.addEventListener('click', () => {
+                _homeSort = btn.dataset.sort;
+                localStorage.setItem('pcLeaderSort', _homeSort);
+                document.querySelectorAll('#homeLeaderSort .toggle-btn')
+                    .forEach(b => b.classList.toggle('active',
+                                                     b.dataset.sort === _homeSort));
+                refreshLeaderboard();
+            });
+        });
+
+        refreshStatus();
+        refreshLeaderboard();
+        setInterval(refreshStatus, 10000);
+        setInterval(refreshLeaderboard, 15000);
+
+    </script>
+    <script>
+        // Custom modal dialogs
+        var _modalResolve = null;
+        function _showModal(message, type, placeholder) {
+            var overlay = document.getElementById('modalOverlay');
+            var msgEl = document.getElementById('modalMessage');
+            var inputEl = document.getElementById('modalInput');
+            var cancelBtn = document.getElementById('modalCancelBtn');
+            msgEl.textContent = message;
+            if (type === 'prompt') {
+                inputEl.style.display = '';
+                inputEl.value = '';
+                inputEl.placeholder = placeholder || '';
+            } else {
+                inputEl.style.display = 'none';
+            }
+            cancelBtn.style.display = (type === 'alert') ? 'none' : '';
+            overlay.classList.add('visible');
+            if (type === 'prompt') setTimeout(function () { inputEl.focus(); }, 100);
+            return new Promise(function (resolve) { _modalResolve = resolve; });
+        }
+        function _closeModal(result) {
+            document.getElementById('modalOverlay').classList.remove('visible');
+            if (_modalResolve) { var r = _modalResolve; _modalResolve = null; r(result); }
+        }
+        document.getElementById('modalOkBtn').addEventListener('click', function () {
+            var inputEl = document.getElementById('modalInput');
+            _closeModal(inputEl.style.display !== 'none' ? inputEl.value : true);
+        });
+        document.getElementById('modalCancelBtn').addEventListener('click', function () {
+            var inputEl = document.getElementById('modalInput');
+            _closeModal(inputEl.style.display !== 'none' ? null : false);
+        });
+        document.getElementById('modalInput').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') document.getElementById('modalOkBtn').click();
+        });
+        function showAlert(msg) { return _showModal(msg, 'alert'); }
+        function showConfirm(msg) { return _showModal(msg, 'confirm'); }
+        function showPrompt(msg, placeholder) { return _showModal(msg, 'prompt', placeholder); }
+
+        // Section toggle state
+        const sectionStates = {
+            wifi: false,
+            lichess: false,
+            board: false,
+            hwconfig: false,
+            ota: false
+        };
+
+        function toggleSection(name) {
+            // Close all other sections
+            for (const key in sectionStates) {
+                if (key !== name && sectionStates[key]) {
+                    sectionStates[key] = false;
+                    document.getElementById(key + '-content').classList.remove('expanded');
+                    document.getElementById(key + '-icon').textContent = '▶';
+                }
+            }
+
+            // Toggle current section
+            sectionStates[name] = !sectionStates[name];
+            const content = document.getElementById(name + '-content');
+            const icon = document.getElementById(name + '-icon');
+
+            if (sectionStates[name]) {
+                content.classList.add('expanded');
+                icon.textContent = '▼';
+
+                // Smooth scroll to the expanded section
+                setTimeout(() => {
+                    content.parentElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 500);
+            } else {
+                content.classList.remove('expanded');
+                icon.textContent = '▶';
+            }
+        }
+
+        // ========== WiFi ==========
+        let wifiConnected = true;
+        let lastWifiData = null;
+
+        function rssiToSignal(rssi) {
+            // Returns HTML for a CSS-based signal strength bar
+            let strength;
+            if (rssi >= -50) strength = 4;
+            else if (rssi >= -60) strength = 3;
+            else if (rssi >= -70) strength = 2;
+            else strength = 1;
+            const colors = ['#f44336', '#ff9800', '#ffc107', '#4CAF50'];
+            let bars = '';
+            for (let i = 0; i < 4; i++) {
+                const active = i < strength;
+                const h = 6 + i * 4; // bar heights: 6, 10, 14, 18
+                bars += '<span class="rssi-bar' + (active ? ' active' : '') + '" style="height:' + h + 'px;' + (active ? 'background:' + colors[strength - 1] : '') + '"></span>';
+            }
+            return '<span class="rssi-bars">' + bars + '</span>';
+        }
+
+        function encName(enc) {
+            // wifi_auth_mode_t: 0=OPEN,1=WEP,2=WPA_PSK,3=WPA2_PSK,4=WPA_WPA2_PSK,5=WPA2_ENTERPRISE,6=WPA3_PSK,...
+            if (enc === 0) return 'Open';
+            if (enc === 1) return 'WEP';
+            if (enc <= 4) return 'WPA2';
+            if (enc === 5) return 'WPA2-E';
+            return 'WPA3';
+        }
+
+        function renderSavedNetworks(data) {
+            const container = document.getElementById('savedNetworks');
+            const saved = data.saved || [];
+            if (saved.length === 0) {
+                container.innerHTML = '<div class="network-item" style="color: #888; text-align: center;">No saved networks</div>';
+                return;
+            }
+            let html = '';
+            saved.forEach((net, i) => {
+                const isConnected = data.connected && i === data.connectedIndex;
+                const detail = net.rssi !== undefined
+                    ? rssiToSignal(net.rssi) + ' ' + net.rssi + ' dBm · Ch ' + net.channel + ' · ' + encName(net.enc)
+                    : 'Ch ' + net.channel;
+                const lockIcon = (net.enc !== undefined && net.enc !== 0) ? ' 🔒' : '';
+                html += '<div class="network-item">'
+                    + '<div class="network-info">'
+                    + '<div class="network-ssid">' + escapeHtml(net.ssid) + (isConnected ? ' <span style="color:#4CAF50;font-size:12px;">● Connected</span>' : '') + '</div>'
+                    + '<div class="network-detail">' + detail + lockIcon + '</div>'
+                    + '</div>'
+                    + '<div class="network-actions">'
+                    + (isConnected ? '' : '<button class="net-btn net-btn-connect" onclick="connectSaved(' + i + ')">Connect</button>')
+                    + '<button class="net-btn net-btn-delete" onclick="deleteSaved(' + i + ')">Delete</button>'
+                    + '</div></div>';
+            });
+            container.innerHTML = html;
+        }
+
+        function renderScannedNetworks(data) {
+            const container = document.getElementById('scannedNetworks');
+            const scanned = (data.scanned || []).slice().sort((a, b) => b.rssi - a.rssi);
+            const scanBtn = document.getElementById('scanBtn');
+            if (scanned.length === 0) {
+                container.innerHTML = '<div class="network-item" style="color: #888; text-align: center;">No scan results</div>';
+                if (scanBtn) scanBtn.style.backgroundColor = '#4CAF50';
+                return;
+            }
+            if (scanBtn) scanBtn.style.backgroundColor = '#666';
+            let html = '';
+            scanned.forEach(net => {
+                const isOpen = net.enc === 0;
+                html += '<div class="network-item">'
+                    + '<div class="network-info">'
+                    + '<div class="network-ssid">' + escapeHtml(net.ssid) + '</div>'
+                    + '<div class="network-detail">' + rssiToSignal(net.rssi) + ' ' + net.rssi + ' dBm · Ch ' + net.channel + ' · ' + encName(net.enc) + (isOpen ? '' : ' 🔒') + '</div>'
+                    + '</div>'
+                    + '<div class="network-actions">'
+                    + '<button class="net-btn net-btn-connect" onclick="connectScanned(\'' + escapeHtml(net.ssid) + '\',' + net.enc + ')">Connect</button>'
+                    + '</div></div>';
+            });
+            container.innerHTML = html;
+        }
+
+        function escapeHtml(s) {
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function updateWiFiInfo(retries, maxRetries) {
+            retries = retries || 0;
+            maxRetries = maxRetries || 20;
+            fetch('/wifi')
+                .then(r => r.json())
+                .then(data => {
+                    lastWifiData = data;
+                    wifiConnected = data.connected;
+                    document.getElementById('scanAllChannels').checked = data.scanAllChannels;
+                    if (!data.connected) {
+                        // Auto-expand WiFi section and scroll to it
+                        if (!sectionStates.wifi) toggleSection('wifi');
+                        setTimeout(() => {
+                            document.getElementById('wifi-content').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 100);
+                    }
+                    renderSavedNetworks(data);
+                    renderScannedNetworks(data);
+                })
+                .catch(() => {
+                    if (retries < maxRetries) {
+                        const d = Math.min(500 + (retries * 300), 5000);
+                        setTimeout(() => updateWiFiInfo(retries + 1, maxRetries), d);
+                    }
+                });
+        }
+
+        function wifiAction(params) {
+            fetch('/wifi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params
+            }).then(() => {
+                setTimeout(() => updateWiFiInfo(0, 25), 1000);
+            }).catch(() => {
+                setTimeout(() => updateWiFiInfo(0, 25), 1000);
+            });
+        }
+
+        function connectSaved(idx) {
+            wifiAction('action=connect&index=' + idx);
+        }
+
+        async function deleteSaved(idx) {
+            if (!await showConfirm('Remove this saved network?')) return;
+            // If deleting the connected network, optimistically update UI since the fetch to refresh will fail after disconnection
+            const isDeletingConnected = lastWifiData && lastWifiData.connected && idx === lastWifiData.connectedIndex;
+            if (isDeletingConnected && lastWifiData) {
+                const deleted = lastWifiData.saved[idx];
+                const data = JSON.parse(JSON.stringify(lastWifiData));
+                data.saved.splice(idx, 1);
+                data.connected = false;
+                data.connectedIndex = -1;
+                if (deleted && deleted.rssi !== undefined) {
+                    data.scanned = data.scanned || [];
+                    data.scanned.push(deleted);
+                    data.scanned.sort((a, b) => b.rssi - a.rssi);
+                }
+                lastWifiData = data;
+                wifiConnected = false;
+                renderSavedNetworks(data);
+                renderScannedNetworks(data);
+            }
+            fetch('/wifi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'action=delete&index=' + idx
+            }).then(() => updateWiFiInfo())
+                .catch(() => {
+                    if (!isDeletingConnected) updateWiFiInfo();
+                });
+        }
+
+        async function connectScanned(ssid, enc) {
+            if (enc === 0) {
+                // Open network — connect immediately without password
+                wifiAction('action=connect&ssid=' + encodeURIComponent(ssid));
+                return;
+            }
+            const password = await showPrompt('Enter password for "' + ssid + '":', 'Password');
+            if (password === null) return;
+            wifiAction('action=connect&ssid=' + encodeURIComponent(ssid) + '&password=' + encodeURIComponent(password));
+        }
+
+        document.getElementById('scanBtn').addEventListener('click', function () {
+            this.textContent = 'Scanning...';
+            this.disabled = true;
+            fetch('/wifi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'action=scan'
+            }).then(() => {
+                setTimeout(() => {
+                    updateWiFiInfo();
+                    document.getElementById('scanBtn').textContent = 'Scan for Networks';
+                    document.getElementById('scanBtn').disabled = false;
+                }, 6000);
+            }).catch(() => {
+                document.getElementById('scanBtn').textContent = 'Scan for Networks';
+                document.getElementById('scanBtn').disabled = false;
+            });
+        });
+
+        // Handle scan all channels toggle
+        document.getElementById('scanAllChannels').addEventListener('change', function () {
+            fetch('/wifi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'scanAllChannels=' + (this.checked ? '1' : '0')
+            }).catch(() => { });
+        });
+
+        function updateLichessInfo() {
+            fetch('/lichess')
+                .then(response => response.json())
+                .then(data => {
+                    const statusEl = document.getElementById('lichess-token-status');
+                    if (data.hasToken) {
+                        statusEl.textContent = 'Token configured: ' + data.maskedToken;
+                        statusEl.style.color = '#4CAF50';
+                    } else {
+                        statusEl.textContent = 'No token configured';
+                        statusEl.style.color = '#f44336';
+                    }
+                })
+                .catch(() => {
+                    const statusEl = document.getElementById('lichess-token-status');
+                    statusEl.textContent = 'Error loading status';
+                    statusEl.style.color = '#f44336';
+                });
+        }
+
+        // Fetch info on page load
+        updateWiFiInfo();
+        updateLichessInfo();
+        updateBoardSettings();
+        updateHardwareConfig();
+        updateOtaStatus();
+
+        // Auto-dim toggle
+        var _autoDimOn = false;
+        function toggleAutoDim() {
+            _autoDimOn = !_autoDimOn;
+            document.getElementById('autoDimToggle').style.background = _autoDimOn ? '#4CAF50' : '#444';
+            document.getElementById('autoDimKnob').style.left = _autoDimOn ? '22px' : '2px';
+            document.getElementById('autoDimOptions').style.display = _autoDimOn ? 'block' : 'none';
+            document.getElementById('autoDim').checked = _autoDimOn;
+        }
+
+        // Board settings functions
+        function updateBoardSettings() {
+            fetch('/board-settings')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('brightness').value = data.brightness;
+                    document.getElementById('brightness-value').textContent = data.brightness;
+                    document.getElementById('dimMultiplier').value = data.dimMultiplier;
+                    document.getElementById('dim-value').textContent = data.dimMultiplier + '%';
+                    if (data.idleAnimation !== undefined)
+                        document.getElementById('idleAnimation').value = data.idleAnimation;
+                    if (data.idleColor)
+                        document.getElementById('idleColor').value = data.idleColor;
+                    if (data.idleColor2)
+                        document.getElementById('idleColor2').value = data.idleColor2;
+                    if (data.animSpeed !== undefined) {
+                        var pct = Math.round(data.animSpeed * 100);
+                        document.getElementById('animSpeed').value = pct;
+                        document.getElementById('animSpeed-value').textContent = data.animSpeed.toFixed(2) + '×';
+                    }
+                    if (data.idleSaturation !== undefined) {
+                        document.getElementById('idleSaturation').value = data.idleSaturation;
+                        document.getElementById('idleSat-value').textContent = data.idleSaturation + '%';
+                    }
+                    if (data.autoDim !== undefined && data.autoDim !== _autoDimOn) toggleAutoDim();
+                    if (data.autoDimStart !== undefined) document.getElementById('autoDimStart').value = data.autoDimStart;
+                    if (data.autoDimEnd !== undefined) document.getElementById('autoDimEnd').value = data.autoDimEnd;
+                    if (data.autoDimBrightness !== undefined) {
+                        document.getElementById('autoDimBrightness').value = data.autoDimBrightness;
+                        document.getElementById('autoDimBri-value').textContent = data.autoDimBrightness;
+                    }
+                })
+                .catch(() => {
+                    console.log('Error loading board settings');
+                });
+        }
+
+        // Update slider value displays in real-time
+        document.getElementById('brightness').addEventListener('input', function () {
+            document.getElementById('brightness-value').textContent = this.value;
+        });
+
+        document.getElementById('dimMultiplier').addEventListener('input', function () {
+            document.getElementById('dim-value').textContent = this.value + '%';
+        });
+
+        document.getElementById('animSpeed').addEventListener('input', function () {
+            document.getElementById('animSpeed-value').textContent = (this.value / 100).toFixed(2) + '×';
+        });
+
+        document.getElementById('idleSaturation').addEventListener('input', function () {
+            document.getElementById('idleSat-value').textContent = this.value + '%';
+        });
+
+        document.getElementById('autoDimBrightness').addEventListener('input', function () {
+            document.getElementById('autoDimBri-value').textContent = this.value;
+        });
+
+        // Handle board settings form submission
+        document.getElementById('boardSettingsForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const formData = new URLSearchParams();
+            formData.append('brightness', document.getElementById('brightness').value);
+            formData.append('dimMultiplier', document.getElementById('dimMultiplier').value);
+            formData.append('idleAnimation', document.getElementById('idleAnimation').value);
+            formData.append('idleColor', document.getElementById('idleColor').value);
+            formData.append('idleColor2', document.getElementById('idleColor2').value);
+            formData.append('animSpeed', (document.getElementById('animSpeed').value / 100).toFixed(2));
+            formData.append('idleSaturation', document.getElementById('idleSaturation').value);
+            formData.append('autoDim', _autoDimOn ? '1' : '0');
+            formData.append('autoDimStart', document.getElementById('autoDimStart').value);
+            formData.append('autoDimEnd', document.getElementById('autoDimEnd').value);
+            formData.append('autoDimBrightness', document.getElementById('autoDimBrightness').value);
+
+            fetch('/board-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData
+            })
+                .then(response => {
+                    if (response.ok) {
+                        showAlert('LED settings saved successfully!');
+                    } else {
+                        showAlert('Failed to save settings. Please try again.');
+                    }
+                })
+                .catch(() => {
+                    showAlert('Error saving settings. Please try again.');
+                });
+        });
+
+        // Hardware config functions
+        function updateTransistorLabels(checkbox) {
+            const npnLabel = document.getElementById('hw-npn-label');
+            const pnpLabel = document.getElementById('hw-pnp-label');
+            if (checkbox.checked) {
+                npnLabel.classList.remove('hw-transistor-label-active');
+                pnpLabel.classList.add('hw-transistor-label-active');
+            } else {
+                pnpLabel.classList.remove('hw-transistor-label-active');
+                npnLabel.classList.add('hw-transistor-label-active');
+            }
+        }
+
+        function updateHardwareConfig() {
+            fetch('/hardware-config')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('hw-ledPin').value = data.ledPin;
+                    document.getElementById('hw-srClkPin').value = data.srClkPin;
+                    document.getElementById('hw-srLatchPin').value = data.srLatchPin;
+                    document.getElementById('hw-srDataPin').value = data.srDataPin;
+                    const srInvert = document.getElementById('hw-srInvert');
+                    srInvert.checked = data.srInvertOutputs;
+                    updateTransistorLabels(srInvert);
+                    for (let i = 0; i < data.rowPins.length; i++) {
+                        document.getElementById('hw-row' + i).value = data.rowPins[i];
+                    }
+                })
+                .catch(() => {
+                    // Set NPN as default active on load failure
+                    updateTransistorLabels(document.getElementById('hw-srInvert'));
+                    console.log('Error loading hardware config');
+                });
+        }
+
+        document.getElementById('hwConfigForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            if (!await showConfirm('The board will save the new pin configuration and reboot. If sensor or shift register pins changed, calibration will run automatically. Continue?')) return;
+
+            const formData = new URLSearchParams();
+            formData.append('ledPin', document.getElementById('hw-ledPin').value);
+            formData.append('srClkPin', document.getElementById('hw-srClkPin').value);
+            formData.append('srLatchPin', document.getElementById('hw-srLatchPin').value);
+            formData.append('srDataPin', document.getElementById('hw-srDataPin').value);
+            formData.append('srInvertOutputs', document.getElementById('hw-srInvert').checked ? '1' : '0');
+            for (let i = 0; i < 8; i++) {
+                formData.append('rowPin' + i, document.getElementById('hw-row' + i).value);
+            }
+
+            fetch('/hardware-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData.toString()
+            })
+                .then(response => response.text())
+                .then(data => {
+                    showAlert(data);
+                })
+                .catch(() => {
+                    showAlert('Error saving hardware config.');
+                });
+        });
+
+        // Handle calibration button
+        document.getElementById('calibrateBtn').addEventListener('click', async function () {
+            if (await showConfirm('This will clear the current board calibration. The board will need to be calibrated on the next reboot. Continue?')) {
+                fetch('/board-calibrate', {
+                    method: 'POST'
+                })
+                    .then(response => response.text())
+                    .then(data => {
+                        showAlert(data);
+                    })
+                    .catch(() => {
+                        showAlert('Error starting calibration. Please try again.');
+                    });
+            }
+        });
+
+        // Handle Lichess form submission
+        document.getElementById('lichessForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const token = document.getElementById('lichessToken').value;
+
+            if (token.length < 10) {
+                showAlert('Please enter a valid Lichess API token');
+                return;
+            }
+
+            const formData = new URLSearchParams();
+            formData.append('token', token);
+
+            fetch('/lichess', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: formData
+            })
+                .then(response => {
+                    if (response.ok) {
+                        showAlert('Lichess token saved successfully!');
+                        document.getElementById('lichessToken').value = '';
+                        updateLichessInfo();
+                    } else {
+                        showAlert('Failed to save token. Please try again.');
+                    }
+                })
+                .catch(() => {
+                    showAlert('Error saving token. Please try again.');
+                });
+        });
+
+        // ========== OTA Updates ==========
+
+        const GITHUB_RELEASES_URL = 'https://github.com/joojoooo/OpenChess/releases/tag/';
+
+        function formatVersion(v) {
+            return v === 'dev' ? v : 'v' + v;
+        }
+
+        function updateOtaStatus() {
+            const latestEl = document.getElementById('latest-version');
+            fetch('/ota/status')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('current-version').textContent = formatVersion(data.version);
+                    document.getElementById('autoOtaToggle').checked = data.autoUpdate;
+
+                    if (data.latestVersion) {
+                        const latestVersionStr = formatVersion(data.latestVersion);
+                        latestEl.textContent = latestVersionStr;
+                        latestEl.href = GITHUB_RELEASES_URL + 'v' + data.latestVersion;
+
+                        if (data.available) {
+                            latestEl.style.color = '#4CAF50';
+                            showUpdatePopup(data);
+                        } else {
+                            latestEl.style.color = '#ec8703';
+                        }
+                    } else {
+                        latestEl.textContent = 'unavailable';
+                        latestEl.removeAttribute('href');
+                        latestEl.style.color = '#888';
+                    }
+                })
+                .catch(() => {
+                    document.getElementById('current-version').textContent = 'unknown';
+                    latestEl.textContent = 'unavailable';
+                    latestEl.removeAttribute('href');
+                    latestEl.style.color = '#888';
+                });
+        }
+
+        function showUpdatePopup(data) {
+            const overlay = document.getElementById('updateOverlay');
+            document.getElementById('popup-current-version').textContent = formatVersion(data.version);
+            const newVerEl = document.getElementById('popup-new-version');
+            newVerEl.textContent = formatVersion(data.latestVersion);
+            newVerEl.href = GITHUB_RELEASES_URL + 'v' + data.latestVersion;
+            overlay.classList.add('visible');
+        }
+
+        document.getElementById('updateLaterBtn').addEventListener('click', function () {
+            document.getElementById('updateOverlay').classList.remove('visible');
+        });
+
+        document.getElementById('updateNowBtn').addEventListener('click', function () {
+            const statusEl = document.getElementById('update-popup-status');
+            const btn = this;
+            btn.disabled = true;
+            btn.textContent = 'Updating...';
+            statusEl.style.display = 'block';
+            statusEl.textContent = 'Updating... Do not power off the board!';
+            statusEl.style.color = '#ec8703';
+            document.getElementById('updateLaterBtn').style.display = 'none';
+
+            fetch('/ota/apply', { method: 'POST' })
+                .then(r => r.text())
+                .then(msg => {
+                    statusEl.textContent = msg;
+                    setTimeout(() => {
+                        statusEl.textContent = 'Board is rebooting... Refresh this page in a few seconds.';
+                        statusEl.style.color = '#4CAF50';
+                    }, 3000);
+                })
+                .catch(() => {
+                    statusEl.textContent = 'Update failed. Please try again.';
+                    statusEl.style.color = '#f44336';
+                    btn.disabled = false;
+                    btn.textContent = 'Update Now';
+                    document.getElementById('updateLaterBtn').style.display = '';
+                });
+        });
+
+        // Auto-update toggle
+        document.getElementById('autoOtaToggle').addEventListener('change', function () {
+            const formData = new URLSearchParams();
+            formData.append('autoUpdate', this.checked ? '1' : '0');
+            fetch('/ota/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData
+            }).catch(() => { });
+        });
+
+        // Drag & Drop OTA upload
+        const dropZone = document.getElementById('otaDropZone');
+        const fileInput = document.getElementById('otaFileInput');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length > 0) handleOtaFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleOtaFile(e.target.files[0]);
+            e.target.value = '';
+        });
+
+        async function handleOtaFile(file) {
+            const name = file.name.toLowerCase();
+            let endpoint = '';
+            let typeLabel = '';
+
+            if (name.endsWith('.bin')) {
+                endpoint = '/ota/upload/firmware';
+                typeLabel = 'firmware';
+            } else if (name.endsWith('.tar')) {
+                endpoint = '/ota/upload/web';
+                typeLabel = 'web assets';
+            } else {
+                showAlert('Unsupported file type. Please use .bin (firmware) or .tar (web assets).');
+                return;
+            }
+
+            if (!await showConfirm('Upload ' + file.name + ' as ' + typeLabel + ' update?\n\n' +
+                (typeLabel === 'firmware' ? 'The board will reboot after update.' : 'Web assets will be updated (saved games preserved).'))) {
+                return;
+            }
+
+            const progressEl = document.getElementById('ota-upload-progress');
+            const progressFill = document.getElementById('otaProgressFill');
+            const progressText = document.getElementById('ota-progress-text');
+            progressEl.style.display = 'block';
+            progressFill.style.width = '0%';
+            progressText.textContent = 'Uploading ' + typeLabel + '...';
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', endpoint);
+
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const pct = Math.round((e.loaded / e.total) * 100);
+                    progressFill.style.width = pct + '%';
+                    progressText.textContent = 'Uploading ' + typeLabel + '... ' + pct + '%';
+                }
+            });
+
+            xhr.onload = function () {
+                if (xhr.status === 200) {
+                    progressFill.style.width = '100%';
+                    progressText.textContent = typeLabel === 'firmware'
+                        ? 'Firmware updated! Board is rebooting...'
+                        : 'Web assets updated successfully!';
+                    progressFill.style.backgroundColor = '#4CAF50';
+                    if (typeLabel === 'web assets') {
+                        setTimeout(() => { progressEl.style.display = 'none'; }, 3000);
+                    }
+                } else {
+                    progressText.textContent = 'Upload failed: ' + xhr.responseText;
+                    progressFill.style.backgroundColor = '#f44336';
+                }
+            };
+
+            xhr.onerror = function () {
+                progressText.textContent = 'Upload error. Check connection.';
+                progressFill.style.backgroundColor = '#f44336';
+            };
+
+            xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+            xhr.setRequestHeader('X-File-Name', file.name);
+            xhr.send(file);
+        }
+    </script>
+    <script>
+        // Move-highlight colour pickers → localStorage; applied live via PC.
+        (function () {
+            const DEFAULTS = { source: '#f0c040', target: '#2ed573', capture: '#ff3030', invalid: '#e74c3c', valid: '#2ed573' };
+            const ids = { source: 'hlSource', target: 'hlTarget', capture: 'hlCapture', invalid: 'hlInvalid', valid: 'hlValid' };
+            function load() {
+                let c = {}; try { c = JSON.parse(localStorage.getItem('pcHlColors') || '{}'); } catch (e) {}
+                for (const k in ids) {
+                    const el = document.getElementById(ids[k]);
+                    if (el) el.value = c[k] || DEFAULTS[k];
+                }
+            }
+            function save() {
+                const c = {};
+                for (const k in ids) { const el = document.getElementById(ids[k]); if (el) c[k] = el.value; }
+                localStorage.setItem('pcHlColors', JSON.stringify(c));
+                if (window.PC && PC.applyHighlightColors) PC.applyHighlightColors();
+                // Mirror to the firmware so the physical LEDs use the same colours.
+                const body = Object.keys(c).map(k => k + '=' + encodeURIComponent(c[k])).join('&');
+                fetch('/highlight-colors', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body }).catch(() => {});
+            }
+            for (const k in ids) {
+                const el = document.getElementById(ids[k]);
+                if (el) el.addEventListener('input', save);
+            }
+            const reset = document.getElementById('hlResetBtn');
+            if (reset) reset.addEventListener('click', function () {
+                localStorage.removeItem('pcHlColors');
+                load();
+                location.reload();   // clears the applied :root overrides
+            });
+            load();
+        })();
+    </script>
+</body>
+
+</html>
