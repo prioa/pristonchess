@@ -44,6 +44,58 @@ Das neue board.html (oder andere Web-Dateien) sind erst nach dem LittleFS-Upload
 pio device monitor --baud 115200
 ```
 
+## OTA / Entferntes Flashen
+
+Das Brett kann sich ohne USB-Kabel aktualisieren. Code dazu: `src/ota_updater.cpp/.h`,
+Endpunkte + Auto-Check in `src/wifi_manager_esp32.cpp`, UI in `src/web/index.html`.
+Repo für Update-Checks: `OTA_GITHUB_API_URL` in `src/version.h` → `prioa/pristonchess`.
+
+Es gibt zwei Wege:
+
+### Weg A — Manuell per Browser (gleiches Netz)
+
+1. `pio run` → erzeugt `.pio/build/nodemcu-32s/firmware.bin`.
+2. Einstellungsseite öffnen (`pristonchess.local` bzw. IP) → OTA-Bereich.
+3. `.bin` (Firmware) oder `.tar` (Web-Assets) per Drag & Drop ins Upload-Feld ziehen.
+   - `.bin` → `POST /ota/upload/firmware` → Brett flasht und rebootet.
+   - `.tar` → `POST /ota/upload/web` → Web-Dateien werden in LittleFS ersetzt.
+
+### Weg B — Über Internet via GitHub-Release (Pull-Update)
+
+Beim Boot prüft `OtaUpdater::checkForUpdate()` das *latest release* von
+`prioa/pristonchess` und vergleicht den Release-Tag mit `FIRMWARE_VERSION`.
+Bei höherer Version werden die Assets **`firmware.bin`** und **`web_assets.tar`**
+geladen und angewendet (`/ota/apply`, bzw. automatisch wenn Auto-Update an ist).
+
+**Neues Release erstellen — automatisch (empfohlen):**
+
+```bash
+# Versionsnummer höher als die laufende FIRMWARE_VERSION wählen
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Der Workflow `.github/workflows/release.yml` baut dann firmware.bin + web_assets.tar
+und legt das GitHub-Release mit beiden Assets an. Der Tag (`vX.Y.Z`) wird automatisch
+als `FIRMWARE_VERSION` in die Firmware geschrieben. Danach: im Web-UI „Auf Updates
+prüfen“ → „Anwenden“, oder Auto-Update aktiviert → Brett holt es beim nächsten Boot.
+
+**Neues Release erstellen — manuell (ohne CI):**
+
+```bash
+pio run                                              # baut firmware.bin + data/
+cp .pio/build/nodemcu-32s/firmware.bin firmware.bin
+( cd data && tar -cf ../web_assets.tar * )           # Tar OHNE führendes ./
+```
+
+Dann auf GitHub ein Release mit Tag `vX.Y.Z` anlegen und `firmware.bin` +
+`web_assets.tar` als Assets anhängen. Wichtig: Tag-Version muss höher sein als die
+`FIRMWARE_VERSION` der laufenden Firmware, sonst gilt das Brett als „up to date“.
+
+> Hinweis: `web_assets.tar` muss die **Inhalte** von `data/` ohne `./`-Präfix
+> enthalten (z. B. `board.html.gz`, `css/styles.css.gz`) — die OTA-Extraktion legt
+> jeden Eintrag direkt unter `/` in LittleFS ab. Spiele unter `/games/` bleiben erhalten.
+
 ## Web-UI
 
 Dateien unter `src/web/`. Änderungen an HTML/CSS/JS werden erst nach einem Upload sichtbar.

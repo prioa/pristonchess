@@ -1,0 +1,55 @@
+name: Build & Release Firmware
+
+# Baut firmware.bin + web_assets.tar und hängt sie an ein GitHub-Release,
+# sobald ein Tag im Format vX.Y.Z gepusht wird. Das Brett zieht dieses
+# Release dann per OTA (siehe src/ota_updater.cpp / OTA_GITHUB_API_URL).
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write   # nötig, damit der Workflow das Release anlegen darf
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Tag-Version in version.h schreiben
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"          # v1.2.3 -> 1.2.3
+          sed -i "s/#define FIRMWARE_VERSION \"[^\"]*\"/#define FIRMWARE_VERSION \"$VERSION\"/" src/version.h
+          echo "FIRMWARE_VERSION = $VERSION"
+          grep FIRMWARE_VERSION src/version.h
+
+      - name: Firmware bauen (erzeugt auch data/)
+        run: pio run
+
+      - name: web_assets.tar aus data/ packen
+        # Die OTA-Extraktion legt jeden Tar-Eintrag direkt unter / in LittleFS ab.
+        # Deshalb ohne führendes ./ packen: aus data/ heraus tarren.
+        run: |
+          cd data
+          tar -cf ../web_assets.tar *
+          cd ..
+          cp .pio/build/nodemcu-32s/firmware.bin firmware.bin
+          ls -la firmware.bin web_assets.tar
+
+      - name: GitHub-Release erstellen
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            firmware.bin
+            web_assets.tar
+          generate_release_notes: true
