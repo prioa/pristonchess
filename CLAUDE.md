@@ -3,7 +3,7 @@
 ## Project
 
 Automatisches Schachbrett auf ESP32 (NodeMCU-32S).
-Hardware: WS2812B LEDs (8×8), A3144 Hall-Sensoren, 74HC595 Shift-Register, kein e-Paper-Display.
+Hardware: WS2812B LEDs (8×8), A3144 Hall-Sensoren, 74HC595 Shift-Register.
 Web-UI läuft im Browser (Handy/PC), ESP32 ist der Server.
 
 ## Build & Upload
