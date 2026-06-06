@@ -140,7 +140,6 @@ src/
   main.cpp                    — Haupt-Loop, GameStatusData befüllen
   board_driver.h/.cpp         — WS2812B LEDs + Hall-Sensor-Scan
   wifi_manager_esp32.h/.cpp   — Web-Server, /board-update JSON
-  display/display.h/.cpp      — Stub (kein e-Paper mehr)
   chess_bot.cpp               — Stockfish (NNUE)
   chess_engine.h              — isKingInCheck(), Zugvalidierung
 ```

@@ -1,23 +1,52 @@
 /* PristonChess service worker.
-   Goal: serve the static shell from the client cache so the ESP32 only has to
-   answer the small dynamic JSON/SSE requests, and keep the UI usable offline.
+   The ESP32 web server stalls when a page fires many requests in parallel (it
+   serves only a handful of simultaneous TCP connections; the surplus hang
+   forever, so the page's `load` event never fires and "assets/data don't load").
+   Fix: keep ALL static assets in the client cache so a page load hits the ESP32
+   only for its small dynamic JSON. On install we PRECACHE the whole asset shell
+   SEQUENTIALLY (one request at a time) so even warming the cache never floods
+   the board.
 
    Routing:
-   - Navigations / *.html → network-first (always fresh when online, cache
-     fallback offline). This is what fixes stale pages after a redeploy.
-   - Static assets (js/css/svg/png/sounds/manifest) → cache-first: served straight
-     from the cache with NO network round-trip, so heavy use never piles up
-     background revalidation requests on the single-threaded ESP32. A new asset
-     version lands when CACHE is bumped (the activate handler purges the old cache).
-   - Everything else (/board-update, /events SSE, /wifi, /debug-*, POSTs, …)
-     is NOT intercepted at all → the browser talks straight to the ESP32.
+   - Navigations / *.html → network-first (fresh when online, cache fallback).
+   - Static assets (js/css/svg/png/woff2/...) → cache-first (no network once cached).
+   - Dynamic endpoints (/board-update, /wifi, /learn/list, /games, /debug-*, POSTs)
+     → NOT intercepted; the browser talks straight to the ESP32.
 
    NOTE: bump CACHE whenever web assets change so clients pick up the new files. */
-const CACHE = 'pristonchess-v2';
+const CACHE = 'pristonchess-v18';
 const STATIC_RE = /\.(?:js|css|svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|mp3|wav|ogg|json)$/i;
 
-self.addEventListener('install', () => {
-  self.skipWaiting();
+// Asset shell precached on install (one request at a time — see installer).
+const PRECACHE = [
+  './scripts/app.js',
+  './scripts/jquery-4.0.0.min.js',
+  './scripts/chess.js',
+  './scripts/chessboard-1.0.0.min.js',
+  './css/styles.css',
+  './css/chessboard-1.0.0.min.css',
+  './fonts/exo2-latin.woff2',
+  './icon-512.png',
+  './favicon.svg',
+  './manifest.json',
+  './pieces/wP.svg', './pieces/wN.svg', './pieces/wB.svg',
+  './pieces/wR.svg', './pieces/wQ.svg', './pieces/wK.svg',
+  './pieces/bP.svg', './pieces/bN.svg', './pieces/bB.svg',
+  './pieces/bR.svg', './pieces/bQ.svg', './pieces/bK.svg',
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    // Sequential — never fire these in parallel at the connection-limited ESP32.
+    for (const url of PRECACHE) {
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (res && res.ok) await cache.put(url, res);
+      } catch (e) { /* keep going; lazy cache-first will fill any gap later */ }
+    }
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
@@ -51,9 +80,8 @@ async function networkFirst(req) {
   }
 }
 
-// Cache-first: once an asset is in the cache it is served with no network call,
-// so navigating around never generates background traffic to the ESP32. A cache
-// miss (first load, or after a CACHE bump) fetches once and stores it.
+// Cache-first: served from cache with no network call once present. A miss
+// fetches once and stores it.
 async function cacheFirst(req) {
   const cache = await caches.open(CACHE);
   const cached = await cache.match(req);
@@ -75,5 +103,5 @@ self.addEventListener('fetch', (event) => {
 
   if (isNavigation(req)) { event.respondWith(networkFirst(req)); return; }
   if (STATIC_RE.test(url.pathname)) { event.respondWith(cacheFirst(req)); return; }
-  // Dynamic endpoints (board-update, events, wifi, debug-*, …) → untouched.
+  // Dynamic endpoints (board-update, wifi, learn/list, games, debug-*, …) → untouched.
 });

@@ -127,11 +127,6 @@ bool ChessBot::parseStockfishResponse(const String& response, String& bestMove, 
 
 void ChessBot::makeBotMove() {
   Serial.println("=== BOT MOVE CALCULATION ===");
-  // Pop a rotating tip onto the e-paper status line so the user has
-  // something to read while Stockfish is busy. forceTick pushes a render
-  // BEFORE we block on the HTTPS handshake.
-  extern void setBotHintRotating();
-  setBotHintRotating();
   std::atomic<bool>* stopAnimation = boardDriver->startThinkingAnimation();
   String bestMove;
   String response = makeStockfishRequest(ChessUtils::boardToFEN(board, currentTurn, chessEngine));
@@ -162,9 +157,6 @@ void ChessBot::makeBotMove() {
       Serial.println("Failed to parse Stockfish UCI move: " + bestMove);
     }
   }
-  // Clear the tip — bot is done thinking, regular status takes over.
-  extern void setBotHint(const char*);
-  setBotHint("");
 }
 
 void ChessBot::waitForRemoteMoveCompletion(int fromRow, int fromCol, int toRow, int toCol, bool isCapture, bool isEnPassant, int enPassantCapturedPawnRow) {

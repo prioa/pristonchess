@@ -1,7 +1,7 @@
 #pragma once
 #include "chess_game.h"
 
-// Hardware-less playback mode for testing the e-paper display and chess
+// Hardware-less playback mode for testing the web UI and chess
 // engine without physical sensors. Plays a fixed scripted game on a timer,
 // then restarts. Enabled via -DSIMULATION_MODE=1 in platformio.ini.
 class SimulationMode : public ChessGame {
@@ -27,6 +27,13 @@ class SimulationMode : public ChessGame {
   // Render position + a move highlight: source square + legal target squares
   // (algebraic, e.g. from="e2", targetsCsv="e3,e4"). Used by manual mode.
   void renderHighlights(const String& fromSq, const String& targetsCsv);
+
+  // Simulation player colours are fixed blue (white) / green (black) per the
+  // user's spec — they don't follow the chess-animation settings.
+  LedRGB getPlayerLedColor(char color) const override {
+    return (color == 'w') ? LedRGB{40, 110, 255}   // blue
+                          : LedRGB{60, 220, 90};   // green
+  }
 
  private:
   bool manual = false;  // true = interactive web play instead of scripted moves

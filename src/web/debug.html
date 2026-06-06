@@ -199,6 +199,34 @@
 </div>
 
 <div class="section">
+  <h2>🧪 Hardware-Tests</h2>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+    <button onclick="dbgPullup()" title="Shift-Register komplett aus → alle 8 Row-Pins lesen. Sollten alle HIGH sein.">1️⃣ Pull-up-Sanity</button>
+    <button onclick="dbgSrInvertToggle()" title="srInvertOutputs umschalten (PNP ↔ NPN-Polarität)">2️⃣ SR-Invert toggeln</button>
+    <button onclick="dbgClassify()" title="10 s lang jeden Pin samplen → klassifizieren in HIGH/LOW/toggelt/flackert">4️⃣ Stuck-Pin-Klassifikator (10s)</button>
+    <button onclick="dbgLedWalk()" title="Eine LED nach der anderen weiß">💡 LED-Walking (~9s)</button>
+    <button onclick="dbgLedRgb()" title="Voll Rot/Grün/Blau/Weiß + 8 Helligkeitsstufen Cyan">🌈 LED-RGB-Sequenz (~6s)</button>
+    <button onclick="dbgPhantomStart()" title="30 s lang im Hintergrund Sensor-Änderungen mitschreiben">👻 Phantom-Logger starten</button>
+    <button onclick="dbgPhantomFetch()" title="Aktuelle Phantom-Log-Einträge abrufen">→ Log holen</button>
+  </div>
+  <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+    <span style="color:#888;font-size:11px;">SR-Bitmuster halten:</span>
+    <button onclick="dbgSrPattern(0x01)">0x01</button>
+    <button onclick="dbgSrPattern(0x02)">0x02</button>
+    <button onclick="dbgSrPattern(0x80)">0x80</button>
+    <button onclick="dbgSrPattern(0xAA)">0xAA</button>
+    <button onclick="dbgSrPattern(0x55)">0x55</button>
+    <button onclick="dbgSrPattern(0xFF)">0xFF</button>
+    <button onclick="dbgSrPatternRelease()">Loslassen</button>
+  </div>
+  <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+    <span style="color:#888;font-size:11px;">Spalten-Walking (1s pro Spalte):</span>
+    <button onclick="dbgColWalk()">▶︎ Walking starten</button>
+  </div>
+  <pre id="dbgOut" style="background:#111;border:1px solid #222;padding:8px;font-size:11px;color:#9cf;min-height:80px;max-height:280px;overflow:auto;margin:0;"></pre>
+</div>
+
+<div class="section">
   <h2>Letzte Änderungen</h2>
   <div id="log"></div>
 </div>
@@ -465,16 +493,115 @@ async function clearAllLeds() {
 
 async function poll() {
   if (!paused && !document.hidden) {
+    const ac = new AbortController();
+    const tid = setTimeout(() => ac.abort(), 2000);
     try {
-      const r = await fetch('/debug-state');
+      const r = await fetch('/debug-state?t=' + Date.now(), {signal: ac.signal, cache: 'no-store'});
       if (r.ok) { update(await r.json()); setConn(true); }
       else setConn(false);
     } catch(e) { setConn(false); }
+    finally { clearTimeout(tid); }
   }
   timer = setTimeout(poll, rate);
 }
 
 if (window.PC) PC.startWifiPill();
+
+// === Hardware Diagnostic Tests ===
+const dbgOut = document.getElementById('dbgOut');
+function dbgLog(msg) {
+  const stamp = new Date().toLocaleTimeString();
+  dbgOut.textContent = '[' + stamp + '] ' + msg + '\n' + dbgOut.textContent;
+}
+async function dbgPullup() {
+  dbgLog('Pull-up-Check läuft…');
+  try {
+    const r = await fetch('/debug/pullup');
+    const j = await r.json();
+    const issues = j.rows.map((v, i) => v === 'LOW' ? 'Row ' + i : null).filter(Boolean);
+    if (issues.length === 0) dbgLog('✅ Alle 8 Row-Pins HIGH — Pull-ups OK.');
+    else dbgLog('⚠️ Diese Row-Pins sind LOW (sollten HIGH sein): ' + issues.join(', ') + ' — Pull-up tot, Sensor klemmt LOW, oder Verdrahtungsfehler.');
+  } catch (e) { dbgLog('❌ Fehler: ' + e); }
+}
+async function dbgSrInvertToggle() {
+  try {
+    const r = await fetch('/debug/sr-invert', {method: 'POST'});
+    const j = await r.json();
+    dbgLog('🔄 srInvertOutputs ist jetzt: ' + j.srInvertOutputs + ' (in NVS gespeichert). Jetzt Pull-up + Klassifikator nochmal — wenn vorher rot, jetzt grün, war PNP-Polarität das Problem.');
+  } catch (e) { dbgLog('❌ Fehler: ' + e); }
+}
+async function dbgSrPattern(p) {
+  try {
+    const fd = new FormData(); fd.append('p', '0x' + p.toString(16)); fd.append('hold', '1');
+    await fetch('/debug/sr-pattern', {method: 'POST', body: fd});
+    dbgLog('SR-Muster 0x' + p.toString(16).padStart(2, '0').toUpperCase() + ' gehalten. Multimeter an Q0–Q7 messen.');
+  } catch (e) { dbgLog('❌ Fehler: ' + e); }
+}
+async function dbgSrPatternRelease() {
+  try {
+    const fd = new FormData(); fd.append('p', '0'); fd.append('hold', '0');
+    await fetch('/debug/sr-pattern', {method: 'POST', body: fd});
+    dbgLog('SR-Muster freigegeben — normaler Scan läuft wieder.');
+  } catch (e) { dbgLog('❌ Fehler: ' + e); }
+}
+async function dbgClassify() {
+  dbgLog('Sampling 10 s — Magnete auf die Sensoren bewegen die du testen willst.');
+  try {
+    const fd = new FormData(); fd.append('ms', '10000');
+    const r = await fetch('/debug/classify', {method: 'POST', body: fd});
+    const j = await r.json();
+    const labels = ['↑', '↓!', '✓', '⚡!'];   // 0=idle, 1=stuck-LOW, 2=toggled, 3=flicker
+    let txt = '';
+    for (let r2 = 0; r2 < 8; r2++) {
+      txt += 'r' + r2 + ': ';
+      for (let c = 0; c < 8; c++) txt += labels[j.grid[r2][c]] + ' ';
+      txt += '\n';
+    }
+    dbgLog('Klassifikation (↑=idle/HIGH  ↓!=stuck LOW  ✓=toggelt  ⚡!=flackert):\n' + txt);
+  } catch (e) { dbgLog('❌ Fehler: ' + e); }
+}
+async function dbgPhantomStart() {
+  try {
+    await fetch('/debug/phantom-start', {method: 'POST'});
+    dbgLog('👻 Phantom-Logger armed (30 s). Nichts berühren — danach „Log holen" klicken.');
+  } catch (e) { dbgLog('❌ Fehler: ' + e); }
+}
+async function dbgPhantomFetch() {
+  try {
+    const r = await fetch('/debug/phantom-fetch');
+    const j = await r.json();
+    if (!j.events || j.events.length === 0) {
+      dbgLog('Keine Phantom-Events — sauber.');
+    } else {
+      dbgLog(j.events.length + ' Phantom-Event(s):');
+      j.events.forEach(e => dbgOut.textContent = '  t=' + e.ms + 'ms  r' + e.row + 'c' + e.col + '  ' + (e.low ? '→LOW' : '→HIGH') + '\n' + dbgOut.textContent);
+    }
+  } catch (e) { dbgLog('❌ Fehler: ' + e); }
+}
+async function dbgLedWalk() {
+  dbgLog('💡 LED-Walking läuft (~9 s) — schau ob alle 64 LEDs einzeln aufleuchten.');
+  try { await fetch('/debug/led-walk', {method: 'POST'}); } catch (e) { dbgLog('❌ Fehler: ' + e); }
+}
+async function dbgLedRgb() {
+  dbgLog('🌈 RGB-Sequenz läuft (~6 s) — Rot, Grün, Blau, Weiß, dann Helligkeitsstufen.');
+  try { await fetch('/debug/led-rgb', {method: 'POST'}); } catch (e) { dbgLog('❌ Fehler: ' + e); }
+}
+async function dbgColWalk() {
+  dbgLog('▶︎ Spalten-Walking — je 1 s pro Spalte. Multimeter an einer Spaltenleitung anlegen.');
+  for (let c = 0; c < 8; c++) {
+    try {
+      const fd = new FormData(); fd.append('col', String(c));
+      await fetch('/debug-hold-col', {method: 'POST', body: fd});
+      dbgLog('  Spalte ' + c + ' aktiv');
+      await new Promise(res => setTimeout(res, 1000));
+    } catch (e) { dbgLog('❌ Fehler: ' + e); break; }
+  }
+  try {
+    const fd = new FormData(); fd.append('col', '-1');
+    await fetch('/debug-hold-col', {method: 'POST', body: fd});
+  } catch (e) {}
+  dbgLog('Walking fertig — Scan wieder normal.');
+}
 
 poll();
 </script>

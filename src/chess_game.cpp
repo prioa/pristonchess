@@ -18,6 +18,24 @@ const char ChessGame::INITIAL_BOARD[8][8] = {
 
 ChessGame::ChessGame(BoardDriver* bd, ChessEngine* ce, WiFiManagerESP32* wm, MoveHistory* mh) : boardDriver(bd), chessEngine(ce), wifiManager(wm), moveHistory(mh), currentTurn('w'), gameOver(false), replaying(false), stopAnimation(nullptr) {}
 
+LedRGB ChessGame::getPlayerLedColor(char color) const {
+  return (color == 'w') ? boardDriver->animPathColorWhite()
+                        : boardDriver->animPathColorBlack();
+}
+
+void ChessGame::setPlayerNames(const char* white, const char* black) {
+  _playerNameWhite[0] = '\0';
+  _playerNameBlack[0] = '\0';
+  if (white && *white) {
+    strncpy(_playerNameWhite, white, sizeof(_playerNameWhite) - 1);
+    _playerNameWhite[sizeof(_playerNameWhite) - 1] = '\0';
+  }
+  if (black && *black) {
+    strncpy(_playerNameBlack, black, sizeof(_playerNameBlack) - 1);
+    _playerNameBlack[sizeof(_playerNameBlack) - 1] = '\0';
+  }
+}
+
 ChessGame::~ChessGame() {
   if (stopAnimation) {
     stopAnimation->store(true);
@@ -58,11 +76,10 @@ void ChessGame::_updateOpeningName() {
 void ChessGame::initializeBoard() {
   currentTurn = 'w';
   gameOver = false;
-  // Clear leftover end-of-game metadata so the e-paper doesn't keep showing
-  // the previous winner splash on the first frame of a new game.
+  // Clear leftover end-of-game metadata so the web UI doesn't keep showing
+  // the previous winner on the first frame of a new game.
   _winnerColor = '?';
   _endReason   = ' ';
-  _lastFromRow = _lastFromCol = _lastToRow = _lastToCol = -1;
   _moveHistoryUci = "";
   _openingName[0] = '\0';
   memcpy(board, INITIAL_BOARD, sizeof(INITIAL_BOARD));
@@ -75,7 +92,7 @@ void ChessGame::waitForBoardSetup(const char targetBoard[8][8], bool showFirewor
 #ifdef SKIP_CALIBRATION
   // No real Hall sensors connected yet — bypass the "place pieces in
   // starting position" guard entirely so the game can start and the
-  // e-paper display will render the chess layout.
+  // web UI will render the chess layout.
   (void)targetBoard;
   (void)showFirework;
   Serial.println("[SKIP_CALIBRATION] skipping waitForBoardSetup");
@@ -155,12 +172,6 @@ void ChessGame::applyMove(int fromRow, int fromCol, int toRow, int toCol, char p
   char piece = board[fromRow][fromCol];
   char capturedPiece = board[toRow][toCol];
 
-  // Record the move endpoints so the e-paper can draw a last-move highlight.
-  _lastFromRow = (int8_t)fromRow;
-  _lastFromCol = (int8_t)fromCol;
-  _lastToRow   = (int8_t)toRow;
-  _lastToCol   = (int8_t)toCol;
-
   // Append the move in UCI notation ("e2e4") and re-evaluate the opening
   // name. Cap the buffer at 12 plies so it doesn't grow without bound.
   if (_moveHistoryUci.length() < 70) {
@@ -194,6 +205,20 @@ void ChessGame::applyMove(int fromRow, int fromCol, int toRow, int toCol, char p
 
   Serial.printf("%s %s: %c %c%d -> %c%d\n", isRemoteMove ? "Remote" : "Player", isCastling ? "castling" : (isEnPassantCapture ? "en passant" : (capturedPiece != ' ' ? "capture" : "move")), piece, (char)('a' + fromCol), 8 - fromRow, (char)('a' + toCol), 8 - toRow);
 
+  // Trace the piece's path on the LEDs for any move the player didn't make
+  // physically (bot, lichess, simulation/replay). Wait for the trail to
+  // finish before the physical-move guidance overrides the LEDs. The trail
+  // colour + speed comes from the per-player chess-animation settings, hence
+  // we pass the moving piece's side.
+  char mover = ChessUtils::isWhitePiece(piece) ? 'w' : 'b';
+  if ((isRemoteMove || replaying) && !isCastling) {
+    boardDriver->movePathAnimation(fromRow, fromCol, toRow, toCol, mover);
+    boardDriver->waitForAnimationQueue(3000);
+    // Soft pulse on the destination so the player gets a clear "the piece
+    // landed here" confirmation. Same colour as the walk trail.
+    boardDriver->cellPulse(toRow, toCol, getPlayerLedColor(mover));
+  }
+
   if (isRemoteMove && !isCastling && !replaying)
     waitForRemoteMoveCompletion(fromRow, fromCol, toRow, toCol, capturedPiece != ' ', isEnPassantCapture, enPassantCapturedPawnRow);
 
@@ -203,7 +228,10 @@ void ChessGame::applyMove(int fromRow, int fromCol, int toRow, int toCol, char p
   updateCastlingRightsAfterMove(fromRow, fromCol, toRow, toCol, piece, capturedPiece);
 
   if (capturedPiece != ' ') {
-    if (!replaying) boardDriver->captureAnimation(toRow, toCol);
+    // Capture wave fires unconditionally — simulation/replay want the red
+    // shock too, not just bot/lichess/HvH. Suppressing it caused the user's
+    // bug report "kein Wave wenn Figur geschlagen wird".
+    boardDriver->captureAnimation(toRow, toCol);
   } else {
     if (!replaying) confirmSquareCompletion(toRow, toCol);
   }
@@ -404,7 +432,16 @@ void ChessGame::updateGameStatus() {
   if (chessEngine->isCheckmate(board, currentTurn)) {
     char winnerColor = (currentTurn == 'w') ? 'b' : 'w';
     Serial.printf("CHECKMATE! %s wins!\n", ChessUtils::colorName(winnerColor));
-    boardDriver->fireworkAnimation(ChessUtils::colorLed(winnerColor));
+    // New mate animation: losing pieces blink red 3x, then the board fills
+    // rank-by-rank from the winner's side in the winner's player colour,
+    // followed by a "<Name> GEWINNT" scroll. The name comes from whatever
+    // setPlayerNames() was called with at game start (HvH profile name,
+    // bot config, sim default). Empty falls back to "WEISS / SCHWARZ".
+    LedRGB winnerLed = getPlayerLedColor(winnerColor);
+    LedRGB loserLed  = getPlayerLedColor(currentTurn);
+    const char* winnerName = getPlayerName(winnerColor);
+    boardDriver->checkmateAnimation(board, winnerColor, winnerLed, loserLed,
+                                    (winnerName && *winnerName) ? winnerName : nullptr);
     gameOver = true;
     _winnerColor = winnerColor;
     _endReason   = 'C';
@@ -455,6 +492,10 @@ void ChessGame::updateGameStatus() {
   if (chessEngine->isKingInCheck(board, currentTurn)) {
     Serial.printf("%s is in CHECK!\n", ChessUtils::colorName(currentTurn));
     boardDriver->clearAllLEDs(false);
+
+    // Red border pulse first to alert the player from the periphery, then the
+    // king-square blink directs the eye to the actual threat.
+    boardDriver->checkBorderFlash();
 
     int kingRow = -1;
     int kingCol = -1;

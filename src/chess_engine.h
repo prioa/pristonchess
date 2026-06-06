@@ -53,7 +53,6 @@ class ChessEngine {
 
   // Check detection helpers
   void getPseudoLegalMoves(const char board[8][8], int row, int col, int& moveCount, int moves[][2], bool includeCastling = true) const;
-  bool isSquareUnderAttack(const char board[8][8], int row, int col, char defendingColor) const;
   bool wouldMoveLeaveKingInCheck(const char board[8][8], int fromRow, int fromCol, int toRow, int toCol) const;
   void makeMove(char board[8][8], int fromRow, int fromCol, int toRow, int toCol, char& capturedPiece) const;
 
@@ -105,6 +104,9 @@ class ChessEngine {
   // Game state checks
   bool findKingPosition(const char board[8][8], char kingColor, int& kingRow, int& kingCol) const;
   bool isKingInCheck(const char board[8][8], char kingColor);
+  // Returns true if (row,col) is attacked by the side opposite of `defendingColor`.
+  // Public so callers (e.g. web handler) can build a threat overlay.
+  bool isSquareUnderAttack(const char board[8][8], int row, int col, char defendingColor) const;
   bool isPawnPromotion(char piece, int targetRow);
   bool hasAnyLegalMove(const char board[8][8], char color);
   bool isCheckmate(const char board[8][8], char kingColor);

@@ -40,6 +40,7 @@ LichessConfig lichessConfig = {""};
 
 BoardDriver boardDriver;
 ChessEngine chessEngine;
+unsigned long g_simManualRenderAt = 0;   // millis() after which to repaint the board (manual sim)
 MoveHistory moveHistory;
 WiFiManagerESP32 wifiManager(&boardDriver, &moveHistory);
 ChessMoves* chessMoves = nullptr;
@@ -51,8 +52,8 @@ ChessLearning* chessLearning = nullptr;
 
 // Player profile registry — restored from the pre-OpenChess PristonChess
 // codebase. Fixed roster (Benny / Rene / Flo / Philipp) with NVS-persisted
-// stats. Used for Human-vs-Human stats + leaderboard on the e-paper idle
-// screen. See src/profiles/profiles.cpp.
+// stats. Used for Human-vs-Human stats + the web-UI leaderboard.
+// See src/profiles/profiles.cpp.
 Profiles profiles;
 
 // Human-vs-Human current-game player IDs (set when MODE_CHESS_MOVES starts
@@ -60,34 +61,6 @@ Profiles profiles;
 String hvhWhitePlayerId;
 String hvhBlackPlayerId;
 bool   hvhResultLogged = false;
-
-// Rolling bot tip — set by ChessBot before it makes a Stockfish request,
-// shown on the e-paper status line until the bot's move is applied.
-static char _botHintBuf[40] = "";
-static const char* const BOT_TIPS[] = {
-  "Tipp: Springer entwickeln",
-  "Tipp: Rochade nicht vergessen",
-  "Tipp: Zentrum kontrollieren",
-  "Tipp: Bauernkette stuetzen",
-  "Tipp: Doppelter Angriff?",
-  "Tipp: Koenig sicher stellen",
-  "Tipp: Tuerme verbinden",
-  "Tipp: Bauernzug ueberlegen",
-  "Tipp: Aktive Figuren tauschen",
-  "Tipp: Diagonalen nutzen",
-};
-static uint8_t _botTipIdx = 0;
-void setBotHint(const char* h) {
-  if (!h) { _botHintBuf[0] = '\0'; return; }
-  strncpy(_botHintBuf, h, sizeof(_botHintBuf) - 1);
-  _botHintBuf[sizeof(_botHintBuf) - 1] = '\0';
-}
-void setBotHintRotating() {
-  setBotHint(BOT_TIPS[_botTipIdx]);
-  _botTipIdx = (uint8_t)((_botTipIdx + 1) %
-                         (sizeof(BOT_TIPS) / sizeof(BOT_TIPS[0])));
-}
-const char* displayGetBotHint() { return _botHintBuf; }
 
 static void logHvHResultIfNeeded() {
   if (hvhResultLogged) return;
@@ -121,7 +94,7 @@ static void logHvHResultIfNeeded() {
 
 // Trigger a manual game-end with a chosen winner ('w' / 'b' / 'd') on
 // whichever game subclass is currently active. Used by the flag-fall path
-// below so the e-paper winner splash + stats logging fire on time loss too.
+// below so the winner status + stats logging fire on time loss too.
 static void endActiveGame(char winner, char reason = 'M') {
   if (currentMode == MODE_CHESS_MOVES && chessMoves) chessMoves->endGameManually(winner, reason);
   else if (currentMode == MODE_BOT && chessBot)       chessBot->endGameManually(winner, reason);
@@ -129,15 +102,22 @@ static void endActiveGame(char winner, char reason = 'M') {
 }
 
 // Chess clock — main.cpp owns the timestamps, board's active color drives
-// which side ticks. Visible on the e-paper. Configured per game mode (e.g.
-// sim sets a 5-minute time limit).
+// which side ticks. Surfaced to the web UI via GameStatusData → /board-update.
+// Configured per game mode (e.g. sim sets a 5-minute time limit).
 ClockState     chessClock;
 unsigned long  chessClockLastMs = 0;
+
+static ChessGame* _activeGameForCurrentMode();   // fwd decl — defined below
 
 static void tickChessClock(char activeTurn) {
   unsigned long now = millis();
   uint32_t dt = (uint32_t)(now - chessClockLastMs);
   chessClockLastMs = now;
+  // Game just ended (checkmate / stalemate / etc.) → stop the clock NOW.
+  // Otherwise the web UI keeps showing the seconds ticking down through the
+  // ~15 s win cinematic before the "X gewinnt" modal finally lands.
+  ChessGame* g = _activeGameForCurrentMode();
+  if (g && g->isGameOver()) chessClock.ticking = false;
   if (!chessClock.ticking || (activeTurn != 'w' && activeTurn != 'b')) return;
 
   uint32_t& ms      = (activeTurn == 'w') ? chessClock.whiteMs      : chessClock.blackMs;
@@ -150,11 +130,11 @@ static void tickChessClock(char activeTurn) {
     else          { ms -= dt; }
   }
   // On flag-fall: end the game with the opposite color as winner so the
-  // e-paper triggers its winner splash + stats get logged.
+  // game-over status fires + stats get logged.
   if (flagJustFell) {
     if (currentMode == MODE_SIMULATION) {
       // Sim mode has no winner / loser — restart the clock and keep the
-      // demo running instead of locking the e-paper into a flagged state.
+      // demo running instead of locking the game into a flagged state.
       Serial.println("[CLOCK] sim clock looped (flag-fall ignored)");
       chessClock.resetTo(chessClock.timeLimitMs);
       return;
@@ -201,19 +181,19 @@ void setup() {
   // NOTE: boardDriver.checkCalibration() is intentionally NOT called at
   // boot any more. It blocks forever waiting for an "empty board" if the
   // Hall-sensor pins are floating (which they are until magnets are wired).
-  // The idle e-paper screen + the web dashboard remain reachable, and
+  // The web dashboard remains reachable, and
   // calibration is triggered on-demand from initializeSelectedMode() when
   // the user actually starts a sensor-dependent game mode.
 
 #ifdef SIMULATION_MODE
   // Build-flag override: skip calibration (which blocks on "empty board"
   // sensor reads), skip live-game recovery, skip the menu — go straight into
-  // the scripted display/engine test. Useful for verifying the e-paper
+  // the scripted engine test. Useful for verifying the web UI / engine
   // without hooking up sensors or shift registers.
   Serial.println("[SIM] SIMULATION_MODE build flag set — bypassing calibration + menu");
   currentMode = MODE_SIMULATION;
   // Pre-configure the chess clock to a simulated 5-minute time limit so the
-  // e-paper has something interesting to render during playback.
+  // web UI has a ticking clock to show during playback.
   chessClock.resetTo(5UL * 60UL * 1000UL);
   chessClock.ticking = true;
   chessClockLastMs   = millis();
@@ -234,13 +214,18 @@ void setup() {
     moveHistory.discardLiveGame();
   }
 
-  boardDriver.fillUpAnimation(LedColors::Green, 50);
+  // If no calibration data exists (e.g. after user triggered recalibration via
+  // web UI), run it immediately at boot instead of silently going to idle.
+  if (!boardDriver.isCalibrated()) {
+    boardDriver.checkCalibration();
+  }
+
+  boardDriver.startupAnimation();
   showGameSelection();
 }
 
-// Resolve the active game pointer based on the current mode. Used by
-// loop() AND by displayForceTick() (called from ChessBot before it kicks
-// off a blocking Stockfish request).
+// Resolve the active game pointer based on the current mode. Used by loop()
+// to drive the clock tick and the /board-update status push.
 static ChessGame* _activeGameForCurrentMode() {
   switch (currentMode) {
     case MODE_CHESS_MOVES: return chessMoves;
@@ -253,9 +238,11 @@ static ChessGame* _activeGameForCurrentMode() {
 }
 
 void loop() {
-  // Refresh the e-paper status display with the active game (if any). The
-  // display has its own throttling + dirty-check, so calling every iteration
-  // is cheap.
+  // Phantom-press logger: cheap no-op when inactive, samples sensors when armed.
+  boardDriver.phantomTick();
+
+  // Resolve the active game (if any) for this tick — drives the clock and
+  // the web status push below.
   ChessGame* activeGame = _activeGameForCurrentMode();
 
   char activeTurn = (activeGame != nullptr) ? activeGame->getCurrentTurn() : '?';
@@ -265,7 +252,12 @@ void loop() {
   // banner on board.html).
   wifiManager.setActiveGameMode(static_cast<int>(currentMode));
 
-  // Push game status (turn, check, opening, clocks) to web UI
+  // Push game status (turn, check, opening, clocks) to web UI.
+  // Track gameOver across iterations so we can push a dedicated SSE event
+  // the instant it flips — without this the win modal on the phone only
+  // appears at the next polling tick or after the LED cinematic ends.
+  static bool _prevGameOver = false;
+  bool nowGameOver = false;
   {
     GameStatusData gs;
     if (activeGame && currentMode != MODE_SELECTION) {
@@ -277,6 +269,7 @@ void loop() {
         gs.inCheck = chessEngine.isKingInCheck(activeGame->getBoard(), gs.turn);
       const char* op = activeGame->getOpeningName();
       if (op) strncpy(gs.opening, op, sizeof(gs.opening) - 1);
+      nowGameOver = gs.gameOver;
     }
     gs.clockWhiteMs = chessClock.whiteMs;
     gs.clockBlackMs = chessClock.blackMs;
@@ -286,6 +279,12 @@ void loop() {
     gs.blackFlagged = chessClock.blackFlagged;
     wifiManager.setGameStatus(gs);
   }
+  // GameOver edge: force an SSE board push so the web modal pops at the
+  // SAME moment the LED cinematic starts, not after it finishes.
+  if (nowGameOver && !_prevGameOver) {
+    wifiManager.broadcastBoardState();
+  }
+  _prevGameOver = nowGameOver;
 
   // chess.com ELO refresh — spawned ONCE per boot as a dedicated FreeRTOS
   // task so the HTTPS handshakes don't block the main loop and trip
@@ -322,8 +321,87 @@ void loop() {
       chessLichess->setBoardStateFromFEN(editFen);
       Serial.println("Board edit applied to Lichess mode");
     } else if (currentMode == MODE_SIMULATION && simulation != nullptr) {
+      // Snapshot the old board so we can diff against the new FEN and trigger
+      // the same LED choreography (path, capture, check) the regular chess
+      // flow gets. Manual sim moves bypass ChessGame::applyMove entirely, so
+      // without this they teleport silently.
+      char oldBoard[8][8];
+      memcpy(oldBoard, simulation->getBoard(), sizeof(oldBoard));
+
       simulation->setBoardStateFromFEN(editFen);
+      const auto& newBoard = simulation->getBoard();
+      // Abort the in-flight pickup highlight before painting the base state
+      // — otherwise the replay loop holds the LED mutex and the move's
+      // animations queue up behind it instead of playing now.
+      boardDriver.abortPickupHighlight();
       simulation->renderBoardLEDs();
+
+      // Find the destination first: the square whose new piece differs from
+      // the old contents. From that, the source is the square that previously
+      // held that same piece type and is now empty (or contains something else).
+      int toR = -1, toC = -1;
+      char movingPiece = ' ';
+      for (int r = 0; r < 8 && toR < 0; r++)
+        for (int c = 0; c < 8; c++)
+          if (newBoard[r][c] != ' ' && newBoard[r][c] != oldBoard[r][c]) {
+            toR = r; toC = c; movingPiece = newBoard[r][c]; break;
+          }
+      int fromR = -1, fromC = -1;
+      if (movingPiece != ' ') {
+        for (int r = 0; r < 8 && fromR < 0; r++)
+          for (int c = 0; c < 8; c++)
+            if (oldBoard[r][c] == movingPiece && newBoard[r][c] != movingPiece) {
+              fromR = r; fromC = c; break;
+            }
+      }
+      char capturedPiece = ' ';
+      if (toR >= 0) {
+        if (oldBoard[toR][toC] != ' ' && oldBoard[toR][toC] != movingPiece)
+          capturedPiece = oldBoard[toR][toC];
+        // En passant: pawn diagonal to an empty square; captured pawn sits at
+        // the to-column on the from-row.
+        if (capturedPiece == ' ' && fromR >= 0 && fromC != toC &&
+            tolower(movingPiece) == 'p' &&
+            oldBoard[fromR][toC] != ' ' && newBoard[fromR][toC] == ' ')
+          capturedPiece = oldBoard[fromR][toC];
+      }
+
+      // Trace the moved piece's path on commit — the "after placement walk".
+      // The pickup multi-path showed all options; this single trail confirms
+      // which one the player chose. Per-player colour from the OLD position
+      // of the moving piece.
+      if (fromR >= 0 && toR >= 0 && (fromR != toR || fromC != toC)) {
+        char mover = ChessUtils::isWhitePiece(oldBoard[fromR][fromC]) ? 'w' : 'b';
+        boardDriver.movePathAnimation(fromR, fromC, toR, toC, mover);
+        // Post-placement pulse on the destination — the user's "piece just
+        // landed" cue. Uses the simulation player colour so it matches the
+        // walk trail.
+        boardDriver.cellPulse(toR, toC, simulation->getPlayerLedColor(mover));
+      }
+      if (capturedPiece != ' ' && toR >= 0)
+        boardDriver.captureAnimation(toR, toC);
+      // Checkmate beats check — losing pieces blink red, board fills from
+      // winner's side. Player colours come from SimulationMode's override
+      // (blue / green), not the chess-anim path colours.
+      if (chessEngine.isCheckmate(newBoard, simulation->getCurrentTurn())) {
+        char loser = simulation->getCurrentTurn();
+        char winner = (loser == 'w') ? 'b' : 'w';
+        // Mark the sim game as over IMMEDIATELY so the web UI's win modal
+        // and clock-stop fire now, not after the ~15 s LED cinematic.
+        simulation->markGameEnded(winner, 'C');
+        LedRGB winnerLed = simulation->getPlayerLedColor(winner);
+        LedRGB loserLed  = simulation->getPlayerLedColor(loser);
+        boardDriver.checkmateAnimation(newBoard, winner, winnerLed, loserLed);
+      } else if (chessEngine.isKingInCheck(newBoard, simulation->getCurrentTurn())) {
+        boardDriver.checkBorderFlash();
+      }
+
+      // Defer the final static board render so it lands AFTER the overlay
+      // animations finish — without this, captureAnimation/checkBorderFlash
+      // end with clearAllLEDs and leave the board dark.
+      extern unsigned long g_simManualRenderAt;
+      g_simManualRenderAt = millis() + 3600;
+
       Serial.println("Board edit applied to Simulation (manual) mode");
     } else {
       Serial.println("Warning: Board edit received but no active game mode");
@@ -332,11 +410,24 @@ void loop() {
     wifiManager.clearPendingEdit();
   }
 
+  // Deferred board re-render after manual-sim animations (path/capture/check)
+  // have had time to play out. Without this the LEDs go dark at the end because
+  // each animation ends with clearAllLEDs.
+  if (g_simManualRenderAt != 0 && millis() >= g_simManualRenderAt) {
+    if (currentMode == MODE_SIMULATION && simulation != nullptr)
+      simulation->renderBoardLEDs();
+    g_simManualRenderAt = 0;
+  }
+
   // Manual-sim move highlight: light the picked-up square + its legal targets.
   String hlFrom, hlTargets;
   if (wifiManager.getPendingHighlight(hlFrom, hlTargets)) {
     if (currentMode == MODE_SIMULATION && simulation != nullptr)
       simulation->renderHighlights(hlFrom, hlTargets);
+    // Cancel any pending deferred board re-render from a prior move — the
+    // user is interacting again, and renderBoardLEDs would wipe the pickup
+    // highlights mid-animation.
+    g_simManualRenderAt = 0;
   }
 
   // Check for pending resign from WiFi
@@ -374,7 +465,13 @@ void loop() {
   char manualWinner;
   if (wifiManager.getPendingManualEnd(manualWinner)) {
     Serial.printf("Processing manual end from web UI: winner=%c\n", manualWinner);
-    if (currentMode == MODE_CHESS_MOVES && modeInitialized && chessMoves != nullptr) {
+    if (manualWinner == 'x') {
+      // Cancel / abort: discard the live game and drop back to selection so the
+      // status pill flips to Idle and the configured idle animation resumes.
+      Serial.println("Manual cancel — discarding game, back to selection");
+      moveHistory.discardLiveGame();
+      showGameSelection();
+    } else if (currentMode == MODE_CHESS_MOVES && modeInitialized && chessMoves != nullptr) {
       chessMoves->endGameManually(manualWinner);
     } else if (currentMode == MODE_BOT && modeInitialized && chessBot != nullptr) {
       chessBot->endGameManually(manualWinner);
@@ -452,6 +549,7 @@ void loop() {
         idleRainbowStop->store(true);
         idleRainbowStop = nullptr;
       }
+      boardDriver.waitForAnimationQueue(1500); // let the idle worker release the ledMutex first
       boardDriver.clearAllLEDs();
     }
   }
@@ -482,7 +580,7 @@ void loop() {
         if (chessMoves->isGameOver()) {
           if (postGameUntilMs == 0) {
             // First tick after game-over: log stats and hold the mode for a
-            // few seconds so the e-paper winner splash stays visible before
+            // few seconds so the web-UI winner status stays visible before
             // we bounce back to game selection.
             logHvHResultIfNeeded();
             postGameUntilMs = millis() + 7000;
@@ -560,6 +658,11 @@ void showGameSelection() {
     idleRainbowStop->store(true);
     idleRainbowStop = nullptr;
   }
+  // TV-off → on transition between the previous mode (game / lesson / idle
+  // game) and the about-to-start idle animation. Without this the LEDs cut
+  // straight from one to the next, which reads as a glitch.
+  boardDriver.modeChangeTransition();
+  boardDriver.waitForAnimationQueue(2500);
   idleRainbowStop = boardDriver.startIdleAnimation();
   Serial.println("=============== Game Selection Mode ===============");
   Serial.println("Four LEDs are lit in the center of the board:");
@@ -612,6 +715,17 @@ void handleGameSelection() {
   // Check for valid rising edge (empty for DEBOUNCE_CYCLES, then occupied for DEBOUNCE_CYCLES)
   for (int i = 0; i < 4; ++i) {
     if (selectorStates[i].readyForSelection && selectorStates[i].occupiedCount >= DEBOUNCE_CYCLES) {
+      // Stop the idle animation worker BEFORE clearing the LEDs. The worker
+      // holds the ledMutex for the whole animation and writes strip->Show()
+      // continuously; calling clearAllLEDs() here would race on the
+      // NeoPixelBus/RMT buffer from the other core and crash the ESP32
+      // (this is why placing a piece on a selection square during an
+      // interactive idle animation like "Touch" rebooted the board).
+      if (idleRainbowStop) {
+        idleRainbowStop->store(true);
+        idleRainbowStop = nullptr;
+      }
+      boardDriver.waitForAnimationQueue(1500); // worker releases ledMutex on exit
       switch (i) {
         case 0:
           Serial.println("Mode: 'Chess Moves' selected!");
@@ -652,6 +766,23 @@ void initializeSelectedMode(GameMode mode) {
     idleRainbowStop->store(true);
     idleRainbowStop = nullptr;
   }
+  // Cut short any lingering pickup highlight + endgame cinematic — the user
+  // is starting a new game, they shouldn't have to sit through "WEISS GEWINNT"
+  // scrolling on the previous match.
+  boardDriver.abortPickupHighlight();
+  boardDriver.abortEndgameAnimation();
+
+  // Reset sim-only colour overrides — the new mode might be HvH/Bot/Lichess
+  // which should use the user-configured per-player chess animation colours.
+  // SimulationMode::begin() re-enables it below if the new mode is sim.
+  boardDriver.setSimColorsActive(false);
+
+  // TV-style transition: outside-in fade-out of whatever was on screen, then
+  // inside-out cyan reveal, then black ready for the new mode's first frame.
+  // Block until it finishes so the game clock doesn't tick during the
+  // opening flourish.
+  boardDriver.modeChangeTransition();
+  boardDriver.waitForAnimationQueue(2500);
   if (resumingGame)
     resumingGame = false;
   else
@@ -677,6 +808,13 @@ void initializeSelectedMode(GameMode mode) {
       if (chessMoves != nullptr)
         delete chessMoves;
       chessMoves = new ChessMoves(&boardDriver, &chessEngine, &wifiManager, &moveHistory);
+      // Pull the profile NAMES from the IDs the web sent so the win cinematic
+      // can scroll the actual player's name instead of "WEISS / SCHWARZ".
+      {
+        String wName = profiles.nameForId(wifiManager.getHvHWhiteId().c_str());
+        String bName = profiles.nameForId(wifiManager.getHvHBlackId().c_str());
+        chessMoves->setPlayerNames(wName.c_str(), bName.c_str());
+      }
       chessMoves->begin();
       break;
     case MODE_BOT:

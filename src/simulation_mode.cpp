@@ -60,6 +60,10 @@ SimulationMode::SimulationMode(BoardDriver* bd, ChessEngine* ce, WiFiManagerESP3
       finished(false), seed(0) {}
 
 void SimulationMode::begin() {
+  // SIM forces a fixed blue/green player palette for every per-player
+  // animation (pickup walk, post-move trail, mate fill, cell pulse). Clears
+  // when the user leaves sim — done from main.cpp's initializeSelectedMode.
+  boardDriver->setSimColorsActive(true);
   if (manual) {
     // Interactive sandbox: stand the pieces up in the start position and let
     // the web client drive every move. No scripted playback, no clock pressure.
@@ -121,7 +125,12 @@ void SimulationMode::update() {
                   (char)('a' + m.toCol),   8 - m.toRow);
 
     applyMove(m.fromRow, m.fromCol, m.toRow, m.toCol, m.promotion, /*isRemoteMove=*/false);
-    advanceTurn();
+    // updateGameStatus advances the turn AND runs the end-of-game checks
+    // (checkmate, stalemate, draw rules). Calling it instead of advanceTurn
+    // lets the simulation trigger the same checkmate-spiral / check-border /
+    // capture animations a real game would — needed so the user can test
+    // those visuals without setting up a full physical game.
+    updateGameStatus();
     // Mirror the new position to the LEDs first — before the (potentially slower)
     // eval + FEN build — so the physical board keeps pace with the web view.
     renderBoardLEDs();
@@ -155,7 +164,7 @@ void SimulationMode::renderBoardLEDs() {
         boardDriver->setSquareLED(row, col, LedColors::Off);
       else
         boardDriver->setSquareLED(
-            row, col, ChessUtils::colorLed(ChessUtils::isWhitePiece(p) ? 'w' : 'b'));
+            row, col, getPlayerLedColor(ChessUtils::isWhitePiece(p) ? 'w' : 'b'));
     }
   }
   boardDriver->showLEDs();
@@ -173,31 +182,60 @@ static bool simParseSquare(const String& s, int& row, int& col) {
 }
 
 void SimulationMode::renderHighlights(const String& fromSq, const String& targetsCsv) {
+  // Signal any in-flight pickup highlight (initial walk OR replay loop) to
+  // exit BEFORE we touch the LED mutex. Without this, acquireLEDs() below
+  // blocks until the replay's own queue-check fires — and the replay won't
+  // see its abort condition until the queue gets a new job, which we can't
+  // queue until we hold the mutex. Classic deadlock.
+  boardDriver->abortPickupHighlight();
+  // First, repaint the static piece base — this is what the multi-path
+  // animation will snapshot and overlay its cyan trails onto.
   boardDriver->acquireLEDs();
-  // Base layer: the current position in team colours.
   for (int row = 0; row < 8; row++)
     for (int col = 0; col < 8; col++) {
       char p = board[row][col];
       boardDriver->setSquareLED(row, col,
           (p == ' ' || p == '\0') ? LedColors::Off
-                                  : ChessUtils::colorLed(ChessUtils::isWhitePiece(p) ? 'w' : 'b'));
+                                  : getPlayerLedColor(ChessUtils::isWhitePiece(p) ? 'w' : 'b'));
     }
-  // Legal targets (green), then the picked-up square (yellow) on top.
-  int r, c, start = 0;
-  while (targetsCsv.length() > 0 && start < (int)targetsCsv.length()) {
+  boardDriver->showLEDs();
+  boardDriver->releaseLEDs();
+
+  // Empty source = "clear pickup" → just leave the base picture; no animation.
+  int srcR, srcC;
+  if (!simParseSquare(fromSq, srcR, srcC)) return;
+
+  // Parse the comma-separated target list and record the capture flag per
+  // target (a piece sitting on the destination = capture).
+  uint8_t tR[28], tC[28], tCap[28];
+  int n = 0;
+  int start = 0;
+  while (targetsCsv.length() > 0 && start < (int)targetsCsv.length() && n < 28) {
     int comma = targetsCsv.indexOf(',', start);
     String tok = (comma < 0) ? targetsCsv.substring(start) : targetsCsv.substring(start, comma);
     tok.trim();
+    int r, c;
     if (simParseSquare(tok, r, c)) {
-      bool capture = (board[r][c] != ' ' && board[r][c] != '\0');
-      boardDriver->setSquareLED(r, c, capture ? boardDriver->hlCaptureColor()
-                                              : boardDriver->hlTargetColor());
+      tR[n] = (uint8_t)r;
+      tC[n] = (uint8_t)c;
+      tCap[n] = (board[r][c] != ' ' && board[r][c] != '\0') ? 1 : 0;
+      n++;
     }
     if (comma < 0) break;
     start = comma + 1;
   }
-  // Configurable colours (shared with the real game's piece-lift). Source on top.
-  if (simParseSquare(fromSq, r, c)) boardDriver->setSquareLED(r, c, boardDriver->hlSourceColor());
-  boardDriver->showLEDs();
-  boardDriver->releaseLEDs();
+
+  if (n > 0) {
+    // Per-player styling: pick the side of the piece on the source square.
+    char piece = board[srcR][srcC];
+    char player = ChessUtils::isWhitePiece(piece) ? 'w' : 'b';
+    boardDriver->multiPathHighlight(srcR, srcC, tR, tC, tCap, n, player);
+  } else {
+    // No targets (e.g. blocked piece) — just show the source highlight on top
+    // of the base picture so the user gets visual feedback for their click.
+    boardDriver->acquireLEDs();
+    boardDriver->setSquareLED(srcR, srcC, boardDriver->hlSourceColor());
+    boardDriver->showLEDs();
+    boardDriver->releaseLEDs();
+  }
 }

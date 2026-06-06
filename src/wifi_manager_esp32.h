@@ -73,9 +73,7 @@ struct ScannedNetwork {
 class WiFiManagerESP32 {
  private:
   AsyncWebServer server;
-  AsyncEventSource _events{"/events"};  // SSE push of /board-update JSON to clients
-  uint32_t _lastEventPush = 0;
-  void pushStateToClients();            // throttled broadcast to connected SSE clients
+  AsyncEventSource boardEvents{"/events"}; // SSE channel for live board updates
   DNSServer dnsServer;
 
   TaskHandle_t pendingWiFiTaskHandle = nullptr;
@@ -256,7 +254,7 @@ class WiFiManagerESP32 {
   // /board-update so the web client can tell whether a game is running.
   void setActiveGameMode(int mode) { activeGameMode = mode; }
   bool getSimManual() const { return simManualMode; }
-  void setGameStatus(const GameStatusData& gs) { _gameStatus = gs; pushStateToClients(); }
+  void setGameStatus(const GameStatusData& gs) { _gameStatus = gs; }
   // Bot configuration
   BotConfig getBotConfig() { return botConfig; }
   // Human-vs-Human player profile IDs (white / black) for stats logging.
@@ -273,6 +271,12 @@ class WiFiManagerESP32 {
   String getLichessToken() { return lichessToken; }
   // Board state management (FEN-based)
   void updateBoardState(const String& fen, float evaluation = 0.0f);
+  // Force a board-state SSE broadcast without touching FEN/eval. Used by
+  // main.cpp on game-over edge so the win modal pops the same instant
+  // the LED cinematic starts.
+  void broadcastBoardState() {
+    if (boardEvents.count() > 0) boardEvents.send(getBoardUpdateJSON().c_str(), "board", millis());
+  }
   String getCurrentFen() const { return currentFen; }
   float getEvaluation() const { return boardEvaluation; }
   // Board edit management (FEN-based)

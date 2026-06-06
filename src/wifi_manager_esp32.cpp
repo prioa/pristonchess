@@ -8,6 +8,7 @@
 extern Profiles profiles;
 #include "chess_lichess.h"
 #include "chess_utils.h"
+#include "chess_engine.h"
 #include "move_history.h"
 #include "version.h"
 #include <Arduino.h>
@@ -103,10 +104,11 @@ void WiFiManagerESP32::begin() {
     }
     String w = request->arg("winner");
     char c = w.length() ? w.charAt(0) : '?';
-    if (c != 'w' && c != 'b' && c != 'd') {
+    if (c != 'w' && c != 'b' && c != 'd' && c != 'x') {
       request->send(400, "text/plain", "Invalid winner");
       return;
     }
+    // 'x' = cancel/abort: end the game without specifying a winner or end-reason.
     pendingManualWinner = c;
     hasPendingManualEnd = true;
     Serial.printf("Manual end requested via web: winner=%c\n", c);
@@ -207,6 +209,83 @@ void WiFiManagerESP32::begin() {
   server.on("/lichess", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleSaveLichessToken(request); });
   server.on("/board-settings", HTTP_GET, [this](AsyncWebServerRequest* request) { request->send(200, "application/json", this->getBoardSettingsJSON()); });
   server.on("/board-settings", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleBoardSettings(request); });
+  server.on("/paint", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    int slot = request->hasArg("slot") ? request->arg("slot").toInt() : boardDriver->getActivePaintSlot();
+    if (slot < 0 || slot >= BoardDriver::paintSlotCount()) slot = boardDriver->getActivePaintSlot();
+    String out; out.reserve(NUM_ROWS * NUM_COLS * 6);
+    char hex[7];
+    for (int r = 0; r < NUM_ROWS; r++)
+      for (int c = 0; c < NUM_COLS; c++) {
+        LedRGB p = boardDriver->getPaintPixel(slot, r, c);
+        snprintf(hex, sizeof(hex), "%02x%02x%02x", p.r, p.g, p.b);
+        out += hex;
+      }
+    request->send(200, "text/plain", out);
+  });
+  server.on("/paint", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    if (!request->hasArg("grid")) { request->send(400, "text/plain", "missing grid"); return; }
+    String g = request->arg("grid");
+    if (g.length() < (size_t)(NUM_ROWS * NUM_COLS * 6)) { request->send(400, "text/plain", "bad grid"); return; }
+    int slot = request->hasArg("slot") ? request->arg("slot").toInt() : boardDriver->getActivePaintSlot();
+    if (slot < 0 || slot >= BoardDriver::paintSlotCount()) slot = boardDriver->getActivePaintSlot();
+    auto hx = [](char ch) -> int { if (ch >= '0' && ch <= '9') return ch - '0'; if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10; if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10; return 0; };
+    for (int i = 0; i < NUM_ROWS * NUM_COLS; i++) {
+      int o = i * 6;
+      LedRGB col{ (uint8_t)(hx(g[o]) * 16 + hx(g[o+1])), (uint8_t)(hx(g[o+2]) * 16 + hx(g[o+3])), (uint8_t)(hx(g[o+4]) * 16 + hx(g[o+5])) };
+      boardDriver->setPaintPixel(slot, i / NUM_COLS, i % NUM_COLS, col);
+    }
+    boardDriver->savePaintSlot(slot);
+    request->send(200, "text/plain", "OK");
+  });
+  server.on("/paint/select", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    if (!request->hasArg("slot")) { request->send(400, "text/plain", "missing slot"); return; }
+    int slot = request->arg("slot").toInt();
+    if (slot < 0 || slot >= BoardDriver::paintSlotCount()) { request->send(400, "text/plain", "bad slot"); return; }
+    boardDriver->setActivePaintSlot((uint8_t)slot);
+    boardDriver->savePaintMeta();
+    request->send(200, "text/plain", "OK");
+  });
+  server.on("/paint/name", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    if (!request->hasArg("slot") || !request->hasArg("name")) { request->send(400, "text/plain", "missing"); return; }
+    int slot = request->arg("slot").toInt();
+    if (slot < 0 || slot >= BoardDriver::paintSlotCount()) { request->send(400, "text/plain", "bad slot"); return; }
+    boardDriver->setPaintName(slot, request->arg("name").c_str());
+    boardDriver->savePaintMeta();
+    request->send(200, "text/plain", "OK");
+  });
+  server.on("/paint/list", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    JsonDocument doc;
+    JsonArray arr = doc.to<JsonArray>();
+    int active = boardDriver->getActivePaintSlot();
+    for (int i = 0; i < BoardDriver::paintSlotCount(); i++) {
+      JsonObject o = arr.add<JsonObject>();
+      o["slot"] = i;
+      o["name"] = boardDriver->getPaintName(i);
+      o["active"] = (i == active);
+    }
+    String out; serializeJson(doc, out);
+    request->send(200, "application/json", out);
+  });
+  server.on("/audio", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    if (!request->hasArg("bands")) { request->send(400, "text/plain", "missing bands"); return; }
+    String b = request->arg("bands");
+    auto hx = [](char ch) -> int { if (ch >= '0' && ch <= '9') return ch - '0'; if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10; if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10; return 0; };
+    uint8_t vals[NUM_COLS] = {0};
+    int n = (int)(b.length() / 2); if (n > NUM_COLS) n = NUM_COLS;
+    for (int i = 0; i < n; i++) vals[i] = (uint8_t)(hx(b[i * 2]) * 16 + hx(b[i * 2 + 1]));
+    boardDriver->setAudioBands(vals, n);
+    request->send(200, "text/plain", "OK");
+  });
+  server.on("/game-input", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    if (!request->hasArg("dir")) { request->send(400, "text/plain", "missing dir"); return; }
+    boardDriver->setGameInput(request->arg("dir").toInt());
+    request->send(200, "text/plain", "OK");
+  });
+  server.on("/board-wave", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    // Trigger the TV-style mode-change transition (outside-in off, inside-out on).
+    boardDriver->modeChangeTransition();
+    request->send(200, "text/plain", "OK");
+  });
   server.on("/board-calibrate", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleBoardCalibration(request); });
   server.on("/games", HTTP_GET, [this](AsyncWebServerRequest* request) { this->handleGamesRequest(request); });
   server.on("/games", HTTP_DELETE, [this](AsyncWebServerRequest* request) { this->handleDeleteGame(request); });
@@ -224,6 +303,74 @@ void WiFiManagerESP32::begin() {
     boardDriver->clearAllLEDs(true);
     boardDriver->releaseLEDs();
     request->send(200, "text/plain", "OK");
+  });
+  // === Diagnostic test endpoints ===
+  server.on("/debug/pullup", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    uint8_t m = boardDriver->pullupSanityCheck();
+    JsonDocument d;
+    d["mask"] = m;
+    JsonArray rows = d["rows"].to<JsonArray>();
+    for (int r = 0; r < 8; r++) rows.add((m >> r) & 1 ? "HIGH" : "LOW");
+    String out; serializeJson(d, out);
+    request->send(200, "application/json", out);
+  });
+  server.on("/debug/sr-invert", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    JsonDocument d; d["srInvertOutputs"] = boardDriver->getSrInvert();
+    String out; serializeJson(d, out);
+    request->send(200, "application/json", out);
+  });
+  server.on("/debug/sr-invert", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    bool v = boardDriver->toggleSrInvert();
+    JsonDocument d; d["srInvertOutputs"] = v;
+    String out; serializeJson(d, out);
+    request->send(200, "application/json", out);
+  });
+  server.on("/debug/sr-pattern", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    uint8_t p = (uint8_t)(request->hasParam("p", true) ? strtol(request->getParam("p", true)->value().c_str(), nullptr, 0) : 0);
+    bool hold = request->hasParam("hold", true) ? request->getParam("hold", true)->value() == "1" : true;
+    boardDriver->debugSrPattern(p, hold);
+    request->send(200, "text/plain", hold ? "held" : "released");
+  });
+  server.on("/debug/classify", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    uint32_t ms = request->hasParam("ms", true) ? (uint32_t)request->getParam("ms", true)->value().toInt() : 8000;
+    if (ms > 30000) ms = 30000;
+    uint8_t grid[8][8];
+    boardDriver->classifyPins(ms, grid);
+    JsonDocument d;
+    JsonArray g = d["grid"].to<JsonArray>();
+    for (int r = 0; r < 8; r++) {
+      JsonArray row = g.add<JsonArray>();
+      for (int c = 0; c < 8; c++) row.add(grid[r][c]);
+    }
+    String out; serializeJson(d, out);
+    request->send(200, "application/json", out);
+  });
+  server.on("/debug/phantom-start", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    boardDriver->phantomLogStart();
+    request->send(200, "text/plain", "armed (30s)");
+  });
+  server.on("/debug/phantom-fetch", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    BoardDriver::PhantomEntry entries[64];
+    size_t n = boardDriver->phantomLogFetch(entries, 64);
+    JsonDocument d;
+    JsonArray arr = d["events"].to<JsonArray>();
+    for (size_t i = 0; i < n; i++) {
+      JsonObject o = arr.add<JsonObject>();
+      o["ms"] = entries[i].ms;
+      o["row"] = entries[i].row;
+      o["col"] = entries[i].col;
+      o["low"] = entries[i].low;
+    }
+    String out; serializeJson(d, out);
+    request->send(200, "application/json", out);
+  });
+  server.on("/debug/led-walk", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    request->send(200, "text/plain", "running");
+    boardDriver->ledWalkTest();
+  });
+  server.on("/debug/led-rgb", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    request->send(200, "text/plain", "running");
+    boardDriver->ledRgbSequenceTest();
   });
   // OTA update endpoints
   server.on("/ota/status", HTTP_GET, [this](AsyncWebServerRequest* request) { this->handleOtaStatus(request); });
@@ -250,15 +397,11 @@ void WiFiManagerESP32::begin() {
   server.serveStatic("/css/", LittleFS, "/css/").setCacheControl("max-age=86400");
   server.serveStatic("/scripts/", LittleFS, "/scripts/").setCacheControl("max-age=86400");
   // Serve all other static files from LittleFS (gzip handled automatically)
+  // SSE for live board updates — MUST be registered before the static catch-all,
+  // otherwise serveStatic("/") swallows /events with a 404.
+  server.addHandler(&boardEvents);
   server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
   server.onNotFound([](AsyncWebServerRequest* request) { request->send(404, "text/plain", "Not Found"); });
-
-  // Server-Sent Events: push board state to connected clients (replaces 500ms polling).
-  // A freshly-connected client immediately gets the current snapshot.
-  _events.onConnect([this](AsyncEventSourceClient* client) {
-    client->send(this->getBoardUpdateJSON().c_str(), "board", millis());
-  });
-  server.addHandler(&_events);
 
   server.begin();
   Serial.println("Web server started on port: " + String(HTTP_PORT));
@@ -266,18 +409,24 @@ void WiFiManagerESP32::begin() {
   xTaskCreate(pendingWiFiBackgroundTask, "WiFi_Pending_Task", 8192, this, 4, &pendingWiFiTaskHandle);
 }
 
-void WiFiManagerESP32::pushStateToClients() {
-  if (_events.count() == 0) return;        // no SSE clients → skip work entirely
-  uint32_t now = millis();
-  if (now - _lastEventPush < 400) return;  // throttle ~2.5 Hz; clocks interpolate client-side
-  _lastEventPush = now;
-  _events.send(getBoardUpdateJSON().c_str(), "board", now);
-}
-
 String WiFiManagerESP32::getBoardUpdateJSON() {
   this->lastBoardPollTime = millis();
   JsonDocument doc;
   doc["fen"] = currentFen;
+  {
+    // Threat bitboard: bit (row*8+col) set if the side-to-move's square is attacked.
+    // Cheap and stateless — only depends on the parsed board + the attacker colour.
+    char tboard[8][8]; char tturn = 'w';
+    ChessEngine te;
+    ChessUtils::fenToBoard(currentFen, tboard, tturn, &te);
+    uint64_t threats = 0;
+    for (int r = 0; r < 8; r++)
+      for (int c = 0; c < 8; c++)
+        if (te.isSquareUnderAttack(tboard, r, c, tturn)) threats |= ((uint64_t)1 << (r * 8 + c));
+    char hex[17];
+    snprintf(hex, sizeof(hex), "%016llx", (unsigned long long)threats);
+    doc["threats"] = hex;
+  }
   doc["evaluation"] = serialized(String(boardEvaluation, 2));
   // Active game mode (0 = no game running). board.html uses this to show
   // a "Kein Spiel läuft" banner instead of an empty live board. The
@@ -719,10 +868,36 @@ String WiFiManagerESP32::getBoardSettingsJSON() {
   doc["idleColor2"] = colorHex;
   doc["animSpeed"] = boardDriver->getAnimSpeed();
   doc["idleSaturation"] = boardDriver->getIdleSaturation();
+  doc["idleRandomColor"] = boardDriver->getIdleRandomColor();
+  doc["idleText"] = boardDriver->getIdleText();
+  doc["textMode"] = boardDriver->getTextMode();
+  LedRGB tc = boardDriver->getTextColor();
+  snprintf(colorHex, sizeof(colorHex), "#%02x%02x%02x", tc.r, tc.g, tc.b);
+  doc["textColor"] = colorHex;
+  LedRGB tb = boardDriver->getTextBg();
+  snprintf(colorHex, sizeof(colorHex), "#%02x%02x%02x", tb.r, tb.g, tb.b);
+  doc["textBg"] = colorHex;
   doc["autoDim"] = boardDriver->getAutoDim();
+  doc["nightOff"] = boardDriver->getNightOff();
   doc["autoDimStart"] = boardDriver->getAutoDimStart();
   doc["autoDimEnd"] = boardDriver->getAutoDimEnd();
   doc["autoDimBrightness"] = boardDriver->getAutoDimBrightness();
+  // Per-player chess animation tuning.
+  LedRGB apw = boardDriver->animPathColorWhite();
+  LedRGB apb = boardDriver->animPathColorBlack();
+  snprintf(colorHex, sizeof(colorHex), "#%02x%02x%02x", apw.r, apw.g, apw.b);
+  doc["animPathColorW"] = colorHex;
+  snprintf(colorHex, sizeof(colorHex), "#%02x%02x%02x", apb.r, apb.g, apb.b);
+  doc["animPathColorB"] = colorHex;
+  doc["animSpeedW"] = boardDriver->animChessSpeedWhite();
+  doc["animSpeedB"] = boardDriver->animChessSpeedBlack();
+  doc["knightPathPct"]    = boardDriver->getKnightPathPct();
+  doc["pickupPulseMs"]    = boardDriver->getPickupPulseMs();
+  doc["walkBudgetMs"]     = boardDriver->getWalkBudgetMs();
+  doc["replayIntervalMs"] = boardDriver->getReplayIntervalMs();
+  doc["replayOverlayPct"] = boardDriver->getReplayOverlayPct();
+  doc["dimOthersOnPickup"] = boardDriver->getDimOthersOnPickup();
+  doc["dimOthersPct"]      = boardDriver->getDimOthersPct();
   String output;
   serializeJson(doc, output);
   return output;
@@ -749,7 +924,7 @@ void WiFiManagerESP32::handleBoardSettings(AsyncWebServerRequest* request) {
 
   if (request->hasArg("idleAnimation")) {
     int anim = request->arg("idleAnimation").toInt();
-    if (anim >= 0 && anim <= 11) {
+    if (anim >= 0 && anim <= 47) {
       boardDriver->setIdleAnimation((IdleAnimation)anim);
       changed = true;
     }
@@ -797,8 +972,38 @@ void WiFiManagerESP32::handleBoardSettings(AsyncWebServerRequest* request) {
     }
   }
 
+  if (request->hasArg("idleRandomColor")) {
+    boardDriver->setIdleRandomColor(request->arg("idleRandomColor") == "1" || request->arg("idleRandomColor") == "true");
+    changed = true;
+  }
+
+  if (request->hasArg("idleText")) {
+    boardDriver->setIdleText(request->arg("idleText").c_str());
+    changed = true;
+  }
+
+  if (request->hasArg("textMode")) {
+    boardDriver->setTextMode((uint8_t)request->arg("textMode").toInt());
+    changed = true;
+  }
+
+  if (request->hasArg("textColor")) {
+    LedRGB c{};
+    if (parseHexColor(request->arg("textColor"), c)) { boardDriver->setTextColor(c); changed = true; }
+  }
+
+  if (request->hasArg("textBg")) {
+    LedRGB c{};
+    if (parseHexColor(request->arg("textBg"), c)) { boardDriver->setTextBg(c); changed = true; }
+  }
+
   if (request->hasArg("autoDim")) {
     boardDriver->setAutoDim(request->arg("autoDim") == "1" || request->arg("autoDim") == "true");
+    changed = true;
+  }
+
+  if (request->hasArg("nightOff")) {
+    boardDriver->setNightOff(request->arg("nightOff") == "1" || request->arg("nightOff") == "true");
     changed = true;
   }
 
@@ -815,6 +1020,52 @@ void WiFiManagerESP32::handleBoardSettings(AsyncWebServerRequest* request) {
   if (request->hasArg("autoDimBrightness")) {
     int b = request->arg("autoDimBrightness").toInt();
     if (b >= 10 && b <= 255) { boardDriver->setAutoDimBrightness((uint8_t)b); changed = true; }
+  }
+
+  // Per-player chess animation tuning — accept any subset of the four params
+  // and write all four back so partial updates don't reset the other side.
+  bool animChanged = false;
+  LedRGB animW = boardDriver->animPathColorWhite();
+  LedRGB animB = boardDriver->animPathColorBlack();
+  float speedW = boardDriver->animChessSpeedWhite();
+  float speedB = boardDriver->animChessSpeedBlack();
+  if (request->hasArg("animPathColorW") && parseHexColor(request->arg("animPathColorW"), animW)) animChanged = true;
+  if (request->hasArg("animPathColorB") && parseHexColor(request->arg("animPathColorB"), animB)) animChanged = true;
+  if (request->hasArg("animSpeedW")) { speedW = request->arg("animSpeedW").toFloat(); animChanged = true; }
+  if (request->hasArg("animSpeedB")) { speedB = request->arg("animSpeedB").toFloat(); animChanged = true; }
+  if (animChanged) {
+    boardDriver->setAnimPathColors(animW, animB);
+    boardDriver->setAnimChessSpeeds(speedW, speedB);
+    changed = true;
+  }
+
+  if (request->hasArg("knightPathPct")) {
+    boardDriver->setKnightPathPct((uint8_t)request->arg("knightPathPct").toInt());
+    changed = true;
+  }
+  if (request->hasArg("pickupPulseMs")) {
+    boardDriver->setPickupPulseMs((uint16_t)request->arg("pickupPulseMs").toInt());
+    changed = true;
+  }
+  if (request->hasArg("walkBudgetMs")) {
+    boardDriver->setWalkBudgetMs((uint16_t)request->arg("walkBudgetMs").toInt());
+    changed = true;
+  }
+  if (request->hasArg("replayIntervalMs")) {
+    boardDriver->setReplayIntervalMs((uint16_t)request->arg("replayIntervalMs").toInt());
+    changed = true;
+  }
+  if (request->hasArg("replayOverlayPct")) {
+    boardDriver->setReplayOverlayPct((uint8_t)request->arg("replayOverlayPct").toInt());
+    changed = true;
+  }
+  if (request->hasArg("dimOthersOnPickup")) {
+    boardDriver->setDimOthersOnPickup(request->arg("dimOthersOnPickup") == "1" || request->arg("dimOthersOnPickup") == "true");
+    changed = true;
+  }
+  if (request->hasArg("dimOthersPct")) {
+    boardDriver->setDimOthersPct((uint8_t)request->arg("dimOthersPct").toInt());
+    changed = true;
   }
 
   if (changed) {
@@ -868,6 +1119,15 @@ void WiFiManagerESP32::handleDebugState(AsyncWebServerRequest* request) {
   hwObj["srInvert"] = hw.srInvertOutputs;
   JsonArray rp = hwObj["rowPins"].to<JsonArray>();
   for (int i = 0; i < NUM_ROWS; i++) rp.add(hw.rowPins[i]);
+  // Diagnostics extras (for the index Diagnose dashboard)
+  doc["ssid"]   = WiFi.SSID();
+  doc["ip"]     = WiFi.localIP().toString();
+  doc["rssi"]   = WiFi.RSSI();
+  doc["cpuMHz"] = ESP.getCpuFreqMHz();
+  doc["sdkVer"] = ESP.getSdkVersion();
+  doc["mode"]   = gameMode;
+  doc["idleAnim"] = (uint8_t)boardDriver->getIdleAnimation();
+  doc["hasLichessToken"] = lichessToken.length() > 0;
   String output;
   serializeJson(doc, output);
   request->send(200, "application/json", output);
@@ -954,6 +1214,9 @@ LichessConfig WiFiManagerESP32::getLichessConfig() {
 void WiFiManagerESP32::updateBoardState(const String& fen, float evaluation) {
   currentFen = fen;
   boardEvaluation = evaluation;
+  // Broadcast to all connected SSE clients (board.html). Cheap because
+  // updates fire ~once per half-move, not per polling tick.
+  if (boardEvents.count() > 0) boardEvents.send(getBoardUpdateJSON().c_str(), "board", millis());
 }
 
 bool WiFiManagerESP32::getPendingBoardEdit(String& fenOut) {
@@ -967,6 +1230,7 @@ bool WiFiManagerESP32::getPendingBoardEdit(String& fenOut) {
 void WiFiManagerESP32::clearPendingEdit() {
   currentFen = pendingFenEdit;
   hasPendingEdit = false;
+  if (boardEvents.count() > 0) boardEvents.send(getBoardUpdateJSON().c_str(), "board", millis());
 }
 
 bool WiFiManagerESP32::getPendingHighlight(String& from, String& targets) {

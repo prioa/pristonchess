@@ -34,7 +34,7 @@ public:
     // a fallback string when the ID is unknown or empty.
     String nameForId(const char* id);
 
-    // Compact leaderboard entry for the e-paper idle screen.
+    // Compact leaderboard entry for the web-UI leaderboard.
     struct LeaderEntry {
         char     name[12];
         uint16_t wins;
@@ -60,8 +60,8 @@ public:
     bool setRatings(const char* id, int rapid, int blitz, int bullet, int daily);
 
     // Look up an ID by display name (case-insensitive). Returns empty
-    // String when not found. Used by the e-paper to map snapshot names
-    // back to IDs for avatar/ELO lookups.
+    // String when not found. Maps snapshot names back to IDs for
+    // avatar/ELO lookups.
     String idForName(const char* name);
     int    getEloById(const char* id);
 

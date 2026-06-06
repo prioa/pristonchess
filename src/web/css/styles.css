@@ -582,7 +582,7 @@ input[type="submit"]:disabled {
 }
 
 .section-content.expanded {
-    max-height: 2000px;
+    max-height: 5000px;
     padding: var(--space-4);
     border-top: 1px solid var(--color-border);
 }

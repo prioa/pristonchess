@@ -3,7 +3,7 @@
 
 // Tiny on-device ECO table — keyed by the leading UCI move sequence
 // (space-separated). Names are kept short (<= 22 chars) so they fit
-// inside the e-paper status line. We match the LONGEST prefix that
+// the opening[24] field surfaced to the web UI. We match the LONGEST prefix that
 // hits, so more specific lines override the parent. Move counts cover
 // the opening up to ~6 plies, which is plenty for naming purposes.
 struct OpeningEntry {

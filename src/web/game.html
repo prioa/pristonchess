@@ -5,6 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#0f1115">
+    <link rel="manifest" href="./manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="PristonChess">
     <title>PristonChess — Spielmodus</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg">
     <link rel="stylesheet" href="./css/styles.css">
@@ -84,18 +88,20 @@
         }
 
         /* Player selection tiles in the HvH modal — full-width radio
-           buttons styled like the toggle-btn group. Two columns when
-           there's enough room. */
+           buttons styled like the toggle-btn group. Single dense column
+           inside each P1/P2 picker; the two pickers sit side-by-side. */
         .player-radio-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: var(--space-2);
+            grid-template-columns: 1fr;
+            gap: 4px;
+            max-height: 180px;
+            overflow-y: auto;
         }
         .player-radio-tile {
             display: flex;
             align-items: center;
             gap: var(--space-2);
-            padding: 8px 10px;
+            padding: 5px 8px;
             background: var(--color-bg-elev-2);
             border: 1px solid var(--color-border);
             border-radius: var(--radius-md, 8px);
@@ -116,13 +122,108 @@
             border-color: var(--color-accent, #f0c040);
         }
         .player-radio-tile .pr-avatar {
-            width: 28px; height: 28px;
+            width: 22px; height: 22px;
             display: inline-flex;
             align-items: center; justify-content: center;
-            font-size: 16px;
+            font-size: 13px;
             border-radius: 50%;
             background: var(--color-bg-elev-3);
             flex-shrink: 0;
+        }
+        /* Shared "start game" modal — fullscreen on phones, generous on
+           desktop. Applies to both #hvhModal and #botModal so the start
+           flow feels consistent. */
+        #hvhModal .modal-box,
+        #botModal .modal-box {
+            max-width: min(720px, 96vw);
+            width: 100%;
+            max-height: calc(100dvh - 16px);
+            padding: var(--space-5);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-4);
+        }
+        @media (max-width: 600px) {
+            #hvhModal .modal-box,
+            #botModal .modal-box {
+                max-width: 100vw;
+                width: 100vw;
+                height: 100dvh;
+                max-height: 100dvh;
+                border-radius: 0;
+                padding: 16px 14px 18px;
+            }
+        }
+        #hvhModal .modal-box h3,
+        #botModal .modal-box h3 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 700;
+        }
+        #hvhModal .form-group,
+        #botModal .form-group { margin-bottom: 0; }
+        #hvhModal .form-group > label,
+        #botModal .form-group > label {
+            display: block;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--color-text-muted);
+            margin-bottom: 8px;
+        }
+        .hvh-players {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-4);
+        }
+        .hvh-players .form-group { margin-bottom: 0; }
+        .hvh-players .player-radio-grid { max-height: none; }
+
+        /* Bigger pills / toggle buttons so they're thumb-sized on phones. */
+        #hvhModal .option-group.pills,
+        #botModal .option-group { gap: 6px; flex-wrap: wrap; }
+        #hvhModal .option-group.pills .toggle-btn.pill,
+        #botModal .option-group .toggle-btn {
+            flex: 1 1 calc(33% - 6px);
+            min-width: 70px;
+            padding: 12px 14px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        /* Modal action buttons — properly tappable on phones. */
+        #hvhModal .modal-actions,
+        #botModal .modal-actions {
+            margin-top: auto;
+            display: flex;
+            gap: 10px;
+            padding-top: var(--space-3);
+        }
+        #hvhModal .modal-actions .button,
+        #hvhModal .modal-actions .back-button,
+        #botModal .modal-actions .button,
+        #botModal .modal-actions .back-button {
+            padding: 14px 18px;
+            font-size: 16px;
+            font-weight: 600;
+            min-height: 48px;
+        }
+
+        /* Per-player colour dot inside the tile — pulled from the profile. */
+        .pr-colordot {
+            display: inline-block;
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.18) inset;
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+
+        /* Bot modal: convert the dropdown to a tile grid (uses same .player-radio-tile styling). */
+        #botModal .player-radio-grid {
+            grid-template-columns: 1fr 1fr;
+            max-height: 220px;
         }
         .player-radio-tile .pr-text {
             display: flex;
@@ -149,6 +250,136 @@
             opacity: 0.4;
             cursor: not-allowed;
         }
+
+        /* ============================================================
+           Game-mode hero cards — scoped to game.html so styles.css's
+           more generic .game-mode rules stay intact for other surfaces.
+           ============================================================ */
+        .mode-hero-grid {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-3);
+            margin: var(--space-4) 0 var(--space-3);
+        }
+        .mode-hero {
+            position: relative;
+            display: grid;
+            grid-template-columns: 64px 1fr auto;
+            align-items: center;
+            gap: var(--space-4);
+            padding: 18px 18px 18px 14px;
+            background:
+                linear-gradient(135deg,
+                    color-mix(in srgb, var(--mode-color, var(--color-accent)) 12%, transparent) 0%,
+                    transparent 70%),
+                var(--color-bg-elev-2);
+            border: 1px solid var(--color-border);
+            border-left: 3px solid var(--mode-color, var(--color-accent));
+            border-radius: var(--radius-lg);
+            color: var(--color-text);
+            cursor: pointer;
+            text-align: left;
+            -webkit-tap-highlight-color: transparent;
+            transition: transform 160ms var(--easing),
+                        border-color 160ms var(--easing),
+                        box-shadow 160ms var(--easing),
+                        background 160ms var(--easing);
+            overflow: hidden;
+        }
+        .mode-hero:hover {
+            transform: translateY(-2px);
+            border-color: var(--mode-color, var(--color-accent));
+            box-shadow: 0 8px 24px -10px var(--mode-color, var(--color-accent));
+        }
+        .mode-hero:active { transform: translateY(0); }
+        .mode-hero.unavailable { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+
+        .mh-icon {
+            width: 56px; height: 56px;
+            border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 28px;
+            background:
+                radial-gradient(circle at 30% 25%,
+                    color-mix(in srgb, var(--mode-color, var(--color-accent)) 38%, transparent) 0%,
+                    color-mix(in srgb, var(--mode-color, var(--color-accent)) 8%, transparent) 60%,
+                    transparent 100%),
+                color-mix(in srgb, var(--mode-color, var(--color-accent)) 14%, var(--color-bg-elev-3));
+            border: 1px solid color-mix(in srgb, var(--mode-color, var(--color-accent)) 35%, transparent);
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+        }
+        .mh-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+        .mh-title {
+            margin: 0;
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--color-text);
+            letter-spacing: 0.005em;
+        }
+        .mh-sub {
+            margin: 0;
+            font-size: 12.5px;
+            color: var(--color-text-muted);
+            line-height: 1.35;
+        }
+        .mh-chips {
+            display: flex; flex-wrap: wrap; gap: 4px;
+            margin-top: 6px;
+        }
+        .mh-chip {
+            font-size: 10px;
+            font-family: var(--font-mono);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            padding: 2px 7px;
+            border-radius: 99px;
+            background: color-mix(in srgb, var(--mode-color, var(--color-accent)) 14%, transparent);
+            color: color-mix(in srgb, var(--mode-color, var(--color-accent)) 75%, var(--color-text));
+            border: 1px solid color-mix(in srgb, var(--mode-color, var(--color-accent)) 22%, transparent);
+        }
+        .mh-arrow {
+            width: 28px; height: 28px;
+            display: flex; align-items: center; justify-content: center;
+            color: color-mix(in srgb, var(--mode-color, var(--color-accent)) 70%, var(--color-text-muted));
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--mode-color, var(--color-accent)) 14%, transparent);
+            font-size: 16px;
+            transition: transform 160ms var(--easing), background 160ms var(--easing);
+        }
+        .mode-hero:hover .mh-arrow {
+            transform: translateX(3px);
+            background: color-mix(in srgb, var(--mode-color, var(--color-accent)) 28%, transparent);
+        }
+
+        /* Heading above the mode cards. */
+        .mode-heading {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: var(--space-3);
+            padding: 0 2px;
+        }
+        .mode-heading h2 {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            color: var(--color-text);
+        }
+        .mode-heading .mode-heading-sub {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--color-text-muted);
+            font-family: var(--font-mono);
+        }
+
+        @media (max-width: 380px) {
+            .mode-hero { grid-template-columns: 52px 1fr auto; gap: var(--space-3); padding: 14px 14px 14px 12px; }
+            .mh-icon { width: 48px; height: 48px; font-size: 24px; border-radius: 14px; }
+            .mh-title { font-size: 16px; }
+            .mh-sub { font-size: 12px; }
+        }
     </style>
     <script src="./scripts/app.js"></script>
 </head>
@@ -168,26 +399,50 @@
             </div>
         </header>
 
-        <div class="settings-shell-header">
+        <div class="mode-heading">
             <h2>Spielmodus</h2>
-            <span class="text-subtle text-muted">Wähle einen Modus</span>
+            <span class="mode-heading-sub">Wähle deinen Gegner</span>
         </div>
-        <div class="game-grid">
-            <div class="game-mode available mode-1" onclick="showHvHModal()">
-                <h3>Lokales Spiel</h3>
-                <p>2 Spieler vor Ort</p>
-                <p>Mit Stats &amp; Rangliste</p>
-            </div>
-            <div class="game-mode available mode-2" onclick="showBotModal()">
-                <h3>Bot</h3>
-                <p>Spielen gegen Stockfish</p>
-                <p>4 Schwierigkeitsstufen</p>
-            </div>
-            <div class="game-mode available mode-3" onclick="showLichessModal()">
-                <h3>Lichess</h3>
-                <p>Online-Spiel</p>
-                <p>auf dem echten Brett</p>
-            </div>
+
+        <div class="mode-hero-grid">
+            <button type="button" class="mode-hero" style="--mode-color:#4D8CFF;" onclick="showHvHModal()">
+                <span class="mh-icon">♟️</span>
+                <span class="mh-body">
+                    <span class="mh-title">Lokales Spiel</span>
+                    <span class="mh-sub">Zwei Spieler am selben Brett — mit Uhr, Stats und Rangliste.</span>
+                    <span class="mh-chips">
+                        <span class="mh-chip">2 Spieler</span>
+                        <span class="mh-chip">Ranked</span>
+                    </span>
+                </span>
+                <span class="mh-arrow" aria-hidden="true">›</span>
+            </button>
+
+            <button type="button" class="mode-hero" style="--mode-color:#F5A623;" onclick="showBotModal()">
+                <span class="mh-icon">🤖</span>
+                <span class="mh-body">
+                    <span class="mh-title">Bot</span>
+                    <span class="mh-sub">Spiele gegen Stockfish — von Anfänger bis Großmeister.</span>
+                    <span class="mh-chips">
+                        <span class="mh-chip">4 Stufen</span>
+                        <span class="mh-chip">Stockfish</span>
+                    </span>
+                </span>
+                <span class="mh-arrow" aria-hidden="true">›</span>
+            </button>
+
+            <button type="button" class="mode-hero" style="--mode-color:#2ED573;" onclick="showLichessModal()">
+                <span class="mh-icon">🌐</span>
+                <span class="mh-body">
+                    <span class="mh-title">Lichess</span>
+                    <span class="mh-sub">Online-Partie mit physischem Brett — Züge spiegeln live.</span>
+                    <span class="mh-chips">
+                        <span class="mh-chip">Online</span>
+                        <span class="mh-chip">Live</span>
+                    </span>
+                </span>
+                <span class="mh-arrow" aria-hidden="true">›</span>
+            </button>
         </div>
 
         <!-- Erweitert: Dev/QA-Modi (Sensor-Test, Simulation) — kollabiert. -->
@@ -218,13 +473,15 @@
             <div class="modal-box">
                 <h3 style="margin-top:0;">Neues Spiel</h3>
 
-                <div class="form-group">
-                    <label>Spieler 1</label>
-                    <div class="player-radio-grid" id="hvhP1"></div>
-                </div>
-                <div class="form-group">
-                    <label>Spieler 2</label>
-                    <div class="player-radio-grid" id="hvhP2"></div>
+                <div class="hvh-players">
+                    <div class="form-group">
+                        <label>Spieler 1</label>
+                        <div class="player-radio-grid" id="hvhP1"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Spieler 2</label>
+                        <div class="player-radio-grid" id="hvhP2"></div>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -269,7 +526,7 @@
 
                 <div class="form-group">
                     <label>Spieler (für Stats)</label>
-                    <select id="botPlayerProfile"></select>
+                    <div class="player-radio-grid" id="botPlayerProfile"></div>
                 </div>
 
                 <div class="form-group">
@@ -393,11 +650,15 @@
                                     '<input type="radio" name="' + escAttr(name) +
                                         '" value="' + escAttr(p.id) + '"' +
                                         (i === idx ? ' checked' : '') + '>' +
-                                    '<span class="pr-avatar">' +
+                                    '<span class="pr-avatar" style="background:' +
+                                        escAttr(p.color || 'var(--color-bg-elev-3)') + ';color:#fff;">' +
                                         escText(p.avatar || '♟') + '</span>' +
                                     '<span class="pr-text">' +
-                                        '<span class="pr-name">' +
-                                            escText(p.name) + '</span>' +
+                                        '<span class="pr-name" style="display:flex;align-items:center;">' +
+                                            '<span class="pr-colordot" style="background:' +
+                                                escAttr(p.color || '#888') + ';"></span>' +
+                                            escText(p.name) +
+                                        '</span>' +
                                         eloChip +
                                     '</span>' +
                                 '</label>'

@@ -5,24 +5,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#0f1115">
+    <link rel="manifest" href="./manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="PristonChess">
     <title>PristonChess — Lernen</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg">
     <link rel="stylesheet" href="./css/styles.css">
     <style>
-        /* ---- Page intro: centered, generous breathing room ---------- */
+        /* ---- Page intro: tighter, more confident ----------------------- */
         .learn-page-header {
-            text-align: center;
-            margin: var(--space-4) 0 var(--space-5);
+            text-align: left;
+            margin: var(--space-3) 0 var(--space-4);
+            display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap;
         }
         .learn-page-header h2 {
             margin: 0;
-            font-size: 1.6rem;
+            font-size: 1.5rem;
             line-height: 1.15;
             letter-spacing: -0.01em;
         }
         .learn-page-header p {
-            margin: 6px auto 0;
-            max-width: 38ch;
+            margin: 0;
             color: var(--color-text-muted);
             font-size: var(--fs-sm);
             line-height: 1.4;
@@ -46,19 +50,19 @@
             border-bottom: 1px solid var(--color-border);
         }
         .learn-section-head .ls-dot {
-            width: 40px; height: 40px;
+            width: 48px; height: 48px;
             border-radius: 50%;
             display: inline-flex;
             align-items: center; justify-content: center;
-            font-size: 22px;
+            font-size: 26px;
             flex-shrink: 0;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.45);
         }
         .learn-section-head .ls-dot.white {
-            background: #f5f5f5; color: #111;
+            background: linear-gradient(145deg, #ffffff, #d6d6d6); color: #111;
         }
         .learn-section-head .ls-dot.black {
-            background: #1a1a1a; color: #f5f5f5;
+            background: linear-gradient(145deg, #2a2a2a, #0a0a0a); color: #f5f5f5;
             border: 1px solid #333;
         }
         .learn-section-head h3 {
@@ -82,12 +86,14 @@
 
         /* ---- Opening card: clear title row + three big level buttons - */
         .learn-card {
-            background: var(--color-bg-elev-2);
+            background: linear-gradient(180deg, var(--color-bg-elev-2), var(--color-bg-elev-1));
             border: 1px solid var(--color-border);
             border-radius: var(--radius-lg);
             padding: var(--space-4);
             margin-bottom: var(--space-3);
+            transition: border-color 140ms, transform 140ms;
         }
+        .learn-card:hover { border-color: var(--color-border-strong, #555); }
         .learn-card-head {
             display: flex;
             align-items: center;
@@ -211,22 +217,45 @@
             gap: var(--space-3);
         }
         .learn-filterbar[hidden] { display: none; }
+        .learn-filterbar { padding: var(--space-3) var(--space-3) var(--space-3); }
         .learn-filter-row {
             display: flex;
-            align-items: center;
-            gap: var(--space-3);
-            flex-wrap: wrap;
+            flex-direction: column;
+            gap: 6px;
         }
         .learn-filter-label {
             font-family: var(--font-mono);
             font-size: 10px;
             text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: var(--color-text-muted);
-            min-width: 62px;
-            flex-shrink: 0;
+            letter-spacing: 0.08em;
+            color: var(--color-text-subtle);
         }
-        .learn-filter-row .option-group.pills { margin: 0; flex: 1; }
+        .learn-filter-row .option-group.pills {
+            margin: 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        /* Slimmer chips for a denser, calmer look */
+        .learn-filterbar .toggle-btn.pill {
+            padding: 6px 12px;
+            font-size: 13px;
+            border-radius: 999px;
+        }
+        #learnSearch {
+            width: 100%;
+            padding: 10px 12px;
+            font-size: 14px;
+            border-radius: 10px;
+            border: 1px solid var(--color-border);
+            background: var(--color-bg-elev-2);
+            color: var(--color-text);
+        }
+        #learnSearch:focus {
+            outline: none;
+            border-color: var(--color-accent, #4D8CFF);
+            background: var(--color-bg-elev-3);
+        }
         .learn-result-count {
             font-size: var(--fs-xs);
             color: var(--color-text-subtle);
@@ -526,6 +555,39 @@
         });
 
         loadCatalog();
+
+        // Live status pill: polls /board-update for mode + active lesson; routes accordingly.
+        (function () {
+            const MODE_NAMES = { 0: 'Idle', 1: 'Spiel (Mensch)', 2: 'Spiel (Bot)', 3: 'Lichess', 4: 'Sensor-Test', 5: 'Simulation', 6: 'Lernen' };
+            let _modeNum = 0;
+            function updatePill() {
+                const el = document.getElementById('modeStatusPill');
+                if (!el) return;
+                if (!el._wired) {
+                    el._wired = true;
+                    el.style.cursor = 'pointer';
+                    el.addEventListener('click', function () {
+                        window.location.href = (_modeNum === 0) ? './game.html' : './board.html';
+                    });
+                }
+                fetch('/board-update').then(r => r.json()).then(d => {
+                    _modeNum = (typeof d.mode === 'number') ? d.mode : parseInt(d.mode) || 0;
+                    if (_modeNum === 0) {
+                        el.textContent = 'Idle ›';
+                        el.title = 'Neues Spiel starten';
+                    } else if (_modeNum === 6 && d.lesson && d.lesson.openingName) {
+                        const lvl = d.lesson.level ? ' · L' + d.lesson.level : '';
+                        el.textContent = '📚 ' + d.lesson.openingName + lvl + ' ›';
+                        el.title = 'Zur Übung';
+                    } else {
+                        el.textContent = '♟ ' + (MODE_NAMES[_modeNum] || d.modeName || ('Modus ' + _modeNum)) + ' ›';
+                        el.title = 'Zum laufenden Spiel';
+                    }
+                }).catch(() => {});
+            }
+            updatePill();
+            setInterval(updatePill, 5000);
+        })();
     </script>
 </body>
 

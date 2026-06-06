@@ -349,8 +349,8 @@ bool Profiles::setRatings(const char* id, int rapid, int blitz, int bullet, int 
     if (blitz  > 0) r["blitz"]  = blitz;  else r.remove("blitz");
     if (bullet > 0) r["bullet"] = bullet; else r.remove("bullet");
     if (daily  > 0) r["daily"]  = daily;  else r.remove("daily");
-    // Mirror rapid into the legacy "elo" field so existing readers (e-paper
-    // splash, leaderboard) keep working without touching them.
+    // Mirror rapid into the legacy "elo" field so existing readers
+    // (web-UI leaderboard) keep working without touching them.
     if (rapid > 0) p["elo"] = rapid;
     else           p.remove("elo");
     return _save();

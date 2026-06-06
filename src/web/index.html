@@ -5,6 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#0f1115">
+    <link rel="manifest" href="./manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="PristonChess">
     <title>PristonChess</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg">
     <link rel="stylesheet" href="./css/styles.css">
@@ -186,6 +190,7 @@
         }
     </style>
     <script src="./scripts/app.js"></script>
+    <script src="./scripts/paint_presets.js"></script>
 </head>
 
 <body>
@@ -226,6 +231,10 @@
             <a href="./players.html" class="action-tile compact">
                 <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 19v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="3"/><path d="M22 19v-2a4 4 0 0 0-3-3.87"/><path d="M16 4.13a4 4 0 0 1 0 7.75"/></svg></span>
                 <span class="action-label">Spieler</span>
+            </a>
+            <a href="./idle-games.html" class="action-tile compact">
+                <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4M8 10v4"/><circle cx="16" cy="11" r="1"/><circle cx="18.5" cy="13.5" r="1"/></svg></span>
+                <span class="action-label">Idle Games</span>
             </a>
             <a href="./board.html" class="action-tile compact">
                 <span class="action-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></span>
@@ -362,29 +371,123 @@
                             class="slider-input">
                     </div>
                     <div class="form-group">
-                        <label for="idleAnimation">Idle Animation</label>
-                        <select id="idleAnimation" name="idleAnimation" style="width:100%;padding:8px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#fff;font-size:14px;">
-                            <option value="0">🌈 Rainbow Wave</option>
-                            <option value="1">💧 Breathing</option>
-                            <option value="2">☄️ Comet Chase</option>
-                            <option value="3">✨ Twinkle</option>
-                            <option value="4">⬛ Solid Color</option>
-                            <option value="5">⚫ Off</option>
-                            <option value="6">🔥 Fire</option>
-                            <option value="7">🌊 Plasma</option>
-                            <option value="8">🌠 Meteor Shower</option>
-                            <option value="9">♟️ Chess Pulse</option>
-                            <option value="10">🎨 Color Cycle</option>
-                            <option value="11">🔦 Scan</option>
-                        </select>
+                        <label>Idle Animation <span style="font-size:11px;color:#888;">(wird sofort auf dem Brett angezeigt)</span></label>
+                        <style>
+                            .anim-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:4px;max-height:46vh;overflow-y:auto;padding:4px;border:1px solid #333;border-radius:8px;background:#1a1a1a;-webkit-overflow-scrolling:touch;}
+                            @media(min-width:520px){.anim-grid{grid-template-columns:repeat(3,1fr);}}
+                            .anim-opt{display:flex;align-items:center;gap:8px;padding:11px 12px;border:1px solid #444;border-radius:8px;background:#2a2a2a;color:#fff;font-size:14px;cursor:pointer;transition:border-color .15s,background .15s;user-select:none;}
+                            .anim-opt input{accent-color:#4D8CFF;margin:0;flex:0 0 auto;}
+                            .anim-opt:hover{border-color:#4D8CFF;}
+                            .anim-opt.sel{border-color:#4D8CFF;background:#1c2a44;box-shadow:0 0 0 1px #4D8CFF inset;}
+                        </style>
+                        <div id="idleAnimationGroup" class="anim-grid">
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="0"><span>🌈 Rainbow</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="1"><span>💧 Breathing</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="2"><span>☄️ Comet Chase</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="3"><span>✨ Twinkle</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="4"><span>⬛ Solid</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="6"><span>🔥 Fire</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="7"><span>🌊 Plasma</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="8"><span>🌠 Meteor</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="9"><span>♟️ Chess Pulse</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="10"><span>🎨 Color Cycle</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="11"><span>🔦 Scan</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="12"><span>🎆 Fireworks</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="13"><span>💦 Ripple</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="14"><span>🟩 Matrix Rain</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="15"><span>🌌 Aurora</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="16"><span>🌀 Spiral</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="17"><span>⚔️ Standoff</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="18"><span>♞ Knight's Tour</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="19"><span>👻 Replay</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="20"><span>🎯 Attack</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="21"><span>👆 Touch</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="22"><span>🧬 Game of Life</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="23"><span>⏳ Falling Sand</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="24"><span>🫧 Lava Lamp</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="25"><span>🌧️ Rain</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="26"><span>💫 Starfield</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="27"><span>🕐 Clock</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="28"><span>🔠 Text</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="29"><span>🖌️ Paint</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="30"><span>🧱 Tetris</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="31"><span>🎤 Audio</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="32"><span>🐍 Snake</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="33"><span>🏓 Pong</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="34"><span>🐜 Langton</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="35"><span>⚽ Bounce</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="36"><span>❄️ Snow</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="37"><span>💭 Bubbles</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="38"><span>📊 Sort</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="39"><span>〰️ Wave</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="40"><span>🔺 Rule 30</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="41"><span>🧱 Breakout</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="42"><span>🚴 Tron</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="43"><span>🪣 Catch</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="44"><span>🧠 Simon</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="45"><span>🐎 Charge</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="46"><span>🛡️ Shieldwall</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="47"><span>👑 Court Royal</span></label>
+                            <label class="anim-opt"><input type="radio" name="idleAnimation" value="5"><span>⚫ Off</span></label>
+                        </div>
+                        <div id="textControls" style="margin-top:10px;display:none;border:1px solid #333;border-radius:8px;padding:10px;background:#202020;">
+                            <label for="idleText" style="font-size:13px;">Text</label>
+                            <input type="text" id="idleText" maxlength="31" placeholder="PRISTON CHESS"
+                                style="width:100%;padding:8px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#fff;font-size:14px;margin:4px 0 8px;">
+                            <div style="display:flex;gap:16px;margin:0 0 8px;font-size:13px;">
+                                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="textMode" value="0" style="accent-color:#4D8CFF;"> ↔ Lauftext</label>
+                                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="textMode" value="1" style="accent-color:#4D8CFF;"> ⚡ Buchstabe einzeln</label>
+                            </div>
+                            <div style="display:flex;gap:12px;">
+                                <label style="flex:1;font-size:13px;">Text-Farbe<br><input type="color" id="textColor" value="#ffffff" style="width:100%;height:36px;border-radius:6px;border:1px solid #444;background:#2a2a2a;cursor:pointer;"></label>
+                                <label style="flex:1;font-size:13px;">Hintergrund<br><input type="color" id="textBg" value="#000000" style="width:100%;height:36px;border-radius:6px;border:1px solid #444;background:#2a2a2a;cursor:pointer;"></label>
+                            </div>
+                        </div>
+                        <div id="paintControls" style="margin-top:10px;display:none;border:1px solid #333;border-radius:8px;padding:10px;background:#202020;">
+                            <style>
+                                .pslot{padding:4px 8px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#fff;font-size:12px;cursor:pointer;min-width:30px;text-align:center;}
+                                .pslot.active{border-color:#4D8CFF;background:#1c2a44;box-shadow:0 0 0 1px #4D8CFF inset;}
+                                .pthumb{aspect-ratio:1;background:#000;border:1px solid #333;border-radius:4px;cursor:pointer;display:grid;grid-template-rows:repeat(8,1fr);}
+                                .pthumb:hover{border-color:#4D8CFF;}
+                                .pthumb-row{display:grid;grid-template-columns:repeat(8,1fr);}
+                                .pthumb-cell{width:100%;height:100%;}
+                            </style>
+                            <div id="paintSlots" style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;"></div>
+                            <div style="display:flex;gap:6px;margin-bottom:8px;">
+                                <input type="text" id="paintName" placeholder="Name (max. 11 Zeichen)" maxlength="11" style="flex:1;padding:6px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#fff;font-size:13px;">
+                                <button type="button" id="paintActivate" style="padding:6px 10px;border-radius:6px;border:1px solid #4D8CFF;background:#1c2a44;color:#fff;cursor:pointer;font-size:13px;">Aktiv setzen</button>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap;">
+                                <label style="font-size:13px;display:flex;align-items:center;gap:6px;">Pinsel <input type="color" id="paintBrush" value="#4D8CFF" style="width:42px;height:32px;border-radius:6px;border:1px solid #444;background:#2a2a2a;cursor:pointer;"></label>
+                                <button type="button" id="paintErase" style="padding:6px 10px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#fff;cursor:pointer;">Radierer</button>
+                                <button type="button" id="paintClear" style="padding:6px 10px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#fff;cursor:pointer;">Alles löschen</button>
+                                <label style="padding:6px 10px;border-radius:6px;border:1px solid #444;background:#2a2a2a;color:#fff;cursor:pointer;font-size:13px;">📷 Foto<input type="file" id="paintPhoto" accept="image/*" style="display:none;"></label>
+                            </div>
+                            <div id="paintGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:3px;max-width:320px;touch-action:none;user-select:none;"></div>
+                            <p style="font-size:11px;color:#888;margin:8px 0 4px;">Tippen/ziehen zum Malen — wird live übertragen (Modus „Paint" aktiv).</p>
+                            <details style="margin-top:6px;">
+                                <summary style="font-size:12px;color:#aaa;cursor:pointer;">🎨 Vorlagen</summary>
+                                <div id="paintPresets" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px;"></div>
+                            </details>
+                        </div>
+                        <div id="audioControls" style="margin-top:10px;display:none;border:1px solid #333;border-radius:8px;padding:10px;background:#202020;">
+                            <button type="button" id="audioToggle" style="width:100%;padding:12px;border-radius:8px;border:none;background:#4D8CFF;color:#fff;font-size:15px;cursor:pointer;">🎤 Mikrofon aktivieren</button>
+                            <p id="audioStatus" style="font-size:11px;color:#888;margin:8px 0 0;">Erlaubt Mikrofon-Zugriff; das Klangspektrum wird live aufs Brett übertragen (Modus „Audio" muss aktiv sein).</p>
+                        </div>
                     </div>
                     <div class="form-group">
-                        <label for="idleColor">Primary Color <span style="font-size:11px;color:#888;">(Breathing · Chase · Twinkle · Solid · Fire · Plasma · Meteor · Scan)</span></label>
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" id="idleRandomColor" name="idleRandomColor" style="width:18px;height:18px;accent-color:#4D8CFF;">
+                            <span>🎲 Random colors <span style="font-size:11px;color:#888;">(jeder Durchgang eine neue Farbe — überschreibt Primary Color)</span></span>
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label for="idleColor">Primary Color <span style="font-size:11px;color:#888;">(Breathing · Chase · Twinkle · Solid · Fire · Plasma · Meteor · Scan · Fireworks · Ripple · Matrix · Aurora · Spiral · Standoff)</span></label>
                         <input type="color" id="idleColor" name="idleColor" value="#ffffff"
                             style="width:100%;height:40px;border-radius:6px;border:1px solid #444;background:#2a2a2a;cursor:pointer;padding:3px 4px;">
                     </div>
                     <div class="form-group">
-                        <label for="idleColor2">Secondary Color <span style="font-size:11px;color:#888;">(Chess Pulse)</span></label>
+                        <label for="idleColor2">Secondary Color <span style="font-size:11px;color:#888;">(Chess Pulse · Standoff)</span></label>
                         <input type="color" id="idleColor2" name="idleColor2" value="#ff8000"
                             style="width:100%;height:40px;border-radius:6px;border:1px solid #444;background:#2a2a2a;cursor:pointer;padding:3px 4px;">
                     </div>
@@ -419,11 +522,18 @@
                             </div>
                         </div>
                         <div class="form-group">
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+                                <input type="checkbox" id="nightOff" name="nightOff" style="width:18px;height:18px;accent-color:#4D8CFF;">
+                                <span>🌑 Komplett aus statt Dimmen <span style="font-size:11px;color:#888;">(Brett geht im Zeitfenster ganz dunkel)</span></span>
+                            </label>
+                        </div>
+                        <div class="form-group">
                             <label for="autoDimBrightness">Night Brightness: <span id="autoDimBri-value" style="color:#ec8703;">60</span></label>
                             <input type="range" id="autoDimBrightness" name="autoDimBrightness" min="10" max="200" value="60" class="slider-input">
                         </div>
                     </div>
-                    <input type="submit" style="background-color: #4CAF50;" value="Save LED Settings">
+                    <p style="font-size:11px;color:#888;margin:10px 0 6px;">Änderungen werden sofort aufs Brett übernommen und gespeichert — Speichern ist nur zur Bestätigung.</p>
+                    <input type="submit" style="width:100%;background-color:#4CAF50;padding:14px;font-size:16px;border-radius:8px;border:none;color:#fff;cursor:pointer;" value="💾 Einstellungen speichern">
                 </form>
                 <div class="hr-divider"></div>
                 <p class="section-description" style="margin: 0;">
@@ -467,6 +577,120 @@
                     <input type="color" id="hlValid" value="#2ed573" style="width:100%;height:40px;border-radius:6px;border:1px solid #444;background:#2a2a2a;cursor:pointer;padding:3px 4px;">
                 </div>
                 <button type="button" id="hlResetBtn" class="button" style="background:transparent;border:1px solid var(--color-border-strong);">Auf Standard zurücksetzen</button>
+            </div>
+        </div>
+
+        <!-- Chess-piece walk animation tuning, per player. -->
+        <div class="settings-section">
+            <div class="section-header" onclick="toggleSection('chessanim')">
+                <span class="section-icon" id="chessanim-icon">▶</span>
+                <h3>Schach-Animationen</h3>
+            </div>
+            <div class="section-content" id="chessanim-content">
+                <p class="section-description">
+                    Farbe und Geschwindigkeit der Walk- &amp; Pickup-Animation, getrennt pro Spieler.
+                </p>
+
+                <div class="form-group">
+                    <label for="animPathColorW" style="display:flex;align-items:center;gap:8px;">
+                        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#fff;border:1px solid #555;"></span>
+                        Spieler Weiß — Pfad-Farbe
+                    </label>
+                    <input type="color" id="animPathColorW" value="#28dcff"
+                           style="width:100%;height:40px;border-radius:6px;border:1px solid #444;background:#2a2a2a;cursor:pointer;padding:3px 4px;">
+                </div>
+                <div class="form-group">
+                    <label for="animSpeedW" style="display:flex;justify-content:space-between;">
+                        <span>Spieler Weiß — Geschwindigkeit</span>
+                        <span id="animSpeedWVal" style="font-family:var(--font-mono);color:#888;">1.0×</span>
+                    </label>
+                    <input type="range" id="animSpeedW" min="0.5" max="2.5" step="0.1" value="1.0"
+                           style="width:100%;accent-color:#4D8CFF;">
+                </div>
+
+                <div style="height:1px;background:#333;margin:14px 0;"></div>
+
+                <div class="form-group">
+                    <label for="animPathColorB" style="display:flex;align-items:center;gap:8px;">
+                        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#222;border:1px solid #555;"></span>
+                        Spieler Schwarz — Pfad-Farbe
+                    </label>
+                    <input type="color" id="animPathColorB" value="#ffaa3c"
+                           style="width:100%;height:40px;border-radius:6px;border:1px solid #444;background:#2a2a2a;cursor:pointer;padding:3px 4px;">
+                </div>
+                <div class="form-group">
+                    <label for="animSpeedB" style="display:flex;justify-content:space-between;">
+                        <span>Spieler Schwarz — Geschwindigkeit</span>
+                        <span id="animSpeedBVal" style="font-family:var(--font-mono);color:#888;">1.0×</span>
+                    </label>
+                    <input type="range" id="animSpeedB" min="0.5" max="2.5" step="0.1" value="1.0"
+                           style="width:100%;accent-color:#4D8CFF;">
+                </div>
+
+                <div style="height:1px;background:#333;margin:14px 0;"></div>
+                <p style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 8px;">Fortgeschritten</p>
+
+                <div class="form-group">
+                    <label for="dimOthersOnPickup" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+                        <span>Andere Felder beim Pickup dimmen</span>
+                        <input type="checkbox" id="dimOthersOnPickup" style="width:18px;height:18px;accent-color:#4D8CFF;">
+                    </label>
+                    <p style="font-size:11px;color:#888;margin:4px 0 0;">Alle Felder außerhalb des Pfads gehen während Pickup auf die unten gewählte Helligkeit (faded).</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="dimOthersPct" style="display:flex;justify-content:space-between;">
+                        <span>Dim-Helligkeit</span>
+                        <span id="dimOthersPctVal" style="font-family:var(--font-mono);color:#888;">50%</span>
+                    </label>
+                    <input type="range" id="dimOthersPct" min="5" max="100" step="5" value="50"
+                           style="width:100%;accent-color:#4D8CFF;">
+                </div>
+
+                <div class="form-group">
+                    <label for="knightPathPct" style="display:flex;justify-content:space-between;">
+                        <span>Springer-Pfad-Helligkeit</span>
+                        <span id="knightPathPctVal" style="font-family:var(--font-mono);color:#888;">5%</span>
+                    </label>
+                    <input type="range" id="knightPathPct" min="0" max="30" step="1" value="5"
+                           style="width:100%;accent-color:#4D8CFF;">
+                </div>
+
+                <div class="form-group">
+                    <label for="pickupPulseMs" style="display:flex;justify-content:space-between;">
+                        <span>Pickup-Pulse-Dauer</span>
+                        <span id="pickupPulseMsVal" style="font-family:var(--font-mono);color:#888;">90 ms</span>
+                    </label>
+                    <input type="range" id="pickupPulseMs" min="0" max="300" step="10" value="90"
+                           style="width:100%;accent-color:#4D8CFF;">
+                </div>
+
+                <div class="form-group">
+                    <label for="walkBudgetMs" style="display:flex;justify-content:space-between;">
+                        <span>Walk-Dauer (Budget)</span>
+                        <span id="walkBudgetMsVal" style="font-family:var(--font-mono);color:#888;">380 ms</span>
+                    </label>
+                    <input type="range" id="walkBudgetMs" min="120" max="1200" step="20" value="380"
+                           style="width:100%;accent-color:#4D8CFF;">
+                </div>
+
+                <div class="form-group">
+                    <label for="replayIntervalMs" style="display:flex;justify-content:space-between;">
+                        <span>Replay-Intervall (während Pickup)</span>
+                        <span id="replayIntervalMsVal" style="font-family:var(--font-mono);color:#888;">2.0 s</span>
+                    </label>
+                    <input type="range" id="replayIntervalMs" min="500" max="5000" step="100" value="2000"
+                           style="width:100%;accent-color:#4D8CFF;">
+                </div>
+
+                <div class="form-group">
+                    <label for="replayOverlayPct" style="display:flex;justify-content:space-between;">
+                        <span>Replay-Pulse-Helligkeit</span>
+                        <span id="replayOverlayPctVal" style="font-family:var(--font-mono);color:#888;">95%</span>
+                    </label>
+                    <input type="range" id="replayOverlayPct" min="0" max="100" step="5" value="95"
+                           style="width:100%;accent-color:#4D8CFF;">
+                </div>
             </div>
         </div>
 
@@ -644,6 +868,29 @@
                         <span id="ota-progress-text">Uploading...</span>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Diagnose section: live device status (polled while expanded) -->
+        <div class="settings-section">
+            <div class="section-header" onclick="toggleSection('diag')">
+                <span class="section-icon" id="diag-icon">▶</span>
+                <h3>🩺 Diagnose</h3>
+            </div>
+            <div class="section-content" id="diag-content">
+                <p class="section-description">Live-Status des Boards. Wird abgerufen, solange die Sektion geöffnet ist.</p>
+                <table style="width:100%;font-size:13px;border-collapse:collapse;">
+                    <tr><td style="color:#888;padding:4px 8px;width:40%;">IP</td><td id="diag-ip" style="padding:4px 8px;">—</td></tr>
+                    <tr><td style="color:#888;padding:4px 8px;">SSID</td><td id="diag-ssid" style="padding:4px 8px;">—</td></tr>
+                    <tr><td style="color:#888;padding:4px 8px;">RSSI</td><td id="diag-rssi" style="padding:4px 8px;">—</td></tr>
+                    <tr><td style="color:#888;padding:4px 8px;">Freier Heap</td><td id="diag-heap" style="padding:4px 8px;">—</td></tr>
+                    <tr><td style="color:#888;padding:4px 8px;">Uptime</td><td id="diag-uptime" style="padding:4px 8px;">—</td></tr>
+                    <tr><td style="color:#888;padding:4px 8px;">CPU</td><td id="diag-cpu" style="padding:4px 8px;">—</td></tr>
+                    <tr><td style="color:#888;padding:4px 8px;">SDK</td><td id="diag-sdk" style="padding:4px 8px;">—</td></tr>
+                    <tr><td style="color:#888;padding:4px 8px;">Modus</td><td id="diag-mode" style="padding:4px 8px;">—</td></tr>
+                    <tr><td style="color:#888;padding:4px 8px;">Idle-Animation</td><td id="diag-anim" style="padding:4px 8px;">—</td></tr>
+                    <tr><td style="color:#888;padding:4px 8px;">Lichess-Token</td><td id="diag-lichess" style="padding:4px 8px;">—</td></tr>
+                </table>
             </div>
         </div>
 
@@ -1124,12 +1371,14 @@
 
         // Auto-dim toggle
         var _autoDimOn = false;
+        var _boardLoaded = false;
         function toggleAutoDim() {
             _autoDimOn = !_autoDimOn;
             document.getElementById('autoDimToggle').style.background = _autoDimOn ? '#4CAF50' : '#444';
             document.getElementById('autoDimKnob').style.left = _autoDimOn ? '22px' : '2px';
             document.getElementById('autoDimOptions').style.display = _autoDimOn ? 'block' : 'none';
             document.getElementById('autoDim').checked = _autoDimOn;
+            if (_boardLoaded) _postBoardSetting('autoDim', _autoDimOn ? '1' : '0');
         }
 
         // Board settings functions
@@ -1142,7 +1391,7 @@
                     document.getElementById('dimMultiplier').value = data.dimMultiplier;
                     document.getElementById('dim-value').textContent = data.dimMultiplier + '%';
                     if (data.idleAnimation !== undefined)
-                        document.getElementById('idleAnimation').value = data.idleAnimation;
+                        setIdleAnimationRadio(data.idleAnimation);
                     if (data.idleColor)
                         document.getElementById('idleColor').value = data.idleColor;
                     if (data.idleColor2)
@@ -1156,13 +1405,58 @@
                         document.getElementById('idleSaturation').value = data.idleSaturation;
                         document.getElementById('idleSat-value').textContent = data.idleSaturation + '%';
                     }
+                    if (data.idleRandomColor !== undefined)
+                        document.getElementById('idleRandomColor').checked = data.idleRandomColor;
+                    if (data.idleText !== undefined) document.getElementById('idleText').value = data.idleText;
+                    if (data.textColor) document.getElementById('textColor').value = data.textColor;
+                    if (data.textBg) document.getElementById('textBg').value = data.textBg;
+                    if (data.textMode !== undefined) { const tm = document.querySelector('input[name="textMode"][value="' + data.textMode + '"]'); if (tm) tm.checked = true; }
+                    updateAnimSubControls();
+                    if (window.loadPaintGrid) window.loadPaintGrid();
                     if (data.autoDim !== undefined && data.autoDim !== _autoDimOn) toggleAutoDim();
+                    if (data.nightOff !== undefined) document.getElementById('nightOff').checked = data.nightOff;
                     if (data.autoDimStart !== undefined) document.getElementById('autoDimStart').value = data.autoDimStart;
                     if (data.autoDimEnd !== undefined) document.getElementById('autoDimEnd').value = data.autoDimEnd;
                     if (data.autoDimBrightness !== undefined) {
                         document.getElementById('autoDimBrightness').value = data.autoDimBrightness;
                         document.getElementById('autoDimBri-value').textContent = data.autoDimBrightness;
                     }
+                    if (data.animPathColorW) document.getElementById('animPathColorW').value = data.animPathColorW;
+                    if (data.animPathColorB) document.getElementById('animPathColorB').value = data.animPathColorB;
+                    if (data.animSpeedW !== undefined) {
+                        document.getElementById('animSpeedW').value = data.animSpeedW;
+                        document.getElementById('animSpeedWVal').textContent = parseFloat(data.animSpeedW).toFixed(1) + '×';
+                    }
+                    if (data.animSpeedB !== undefined) {
+                        document.getElementById('animSpeedB').value = data.animSpeedB;
+                        document.getElementById('animSpeedBVal').textContent = parseFloat(data.animSpeedB).toFixed(1) + '×';
+                    }
+                    if (data.dimOthersOnPickup !== undefined) document.getElementById('dimOthersOnPickup').checked = !!data.dimOthersOnPickup;
+                    if (data.dimOthersPct !== undefined) {
+                        document.getElementById('dimOthersPct').value = data.dimOthersPct;
+                        document.getElementById('dimOthersPctVal').textContent = data.dimOthersPct + '%';
+                    }
+                    if (data.knightPathPct !== undefined) {
+                        document.getElementById('knightPathPct').value = data.knightPathPct;
+                        document.getElementById('knightPathPctVal').textContent = data.knightPathPct + '%';
+                    }
+                    if (data.pickupPulseMs !== undefined) {
+                        document.getElementById('pickupPulseMs').value = data.pickupPulseMs;
+                        document.getElementById('pickupPulseMsVal').textContent = data.pickupPulseMs + ' ms';
+                    }
+                    if (data.walkBudgetMs !== undefined) {
+                        document.getElementById('walkBudgetMs').value = data.walkBudgetMs;
+                        document.getElementById('walkBudgetMsVal').textContent = data.walkBudgetMs + ' ms';
+                    }
+                    if (data.replayIntervalMs !== undefined) {
+                        document.getElementById('replayIntervalMs').value = data.replayIntervalMs;
+                        document.getElementById('replayIntervalMsVal').textContent = (data.replayIntervalMs / 1000).toFixed(1) + ' s';
+                    }
+                    if (data.replayOverlayPct !== undefined) {
+                        document.getElementById('replayOverlayPct').value = data.replayOverlayPct;
+                        document.getElementById('replayOverlayPctVal').textContent = data.replayOverlayPct + '%';
+                    }
+                    _boardLoaded = true;
                 })
                 .catch(() => {
                     console.log('Error loading board settings');
@@ -1190,18 +1484,68 @@
             document.getElementById('autoDimBri-value').textContent = this.value;
         });
 
+        // Live-apply: sliders, colours & auto-dim take effect immediately (and persist), so Save is optional.
+        document.getElementById('brightness').addEventListener('change', function () { _postBoardSetting('brightness', this.value); });
+        document.getElementById('dimMultiplier').addEventListener('change', function () { _postBoardSetting('dimMultiplier', this.value); });
+        document.getElementById('animSpeed').addEventListener('change', function () { _postBoardSetting('animSpeed', (this.value / 100).toFixed(2)); });
+        document.getElementById('idleSaturation').addEventListener('change', function () { _postBoardSetting('idleSaturation', this.value); });
+        document.getElementById('idleColor').addEventListener('change', function () { _postBoardSetting('idleColor', this.value); });
+        document.getElementById('idleColor2').addEventListener('change', function () { _postBoardSetting('idleColor2', this.value); });
+        document.getElementById('autoDimStart').addEventListener('change', function () { _postBoardSetting('autoDimStart', this.value); });
+        document.getElementById('autoDimEnd').addEventListener('change', function () { _postBoardSetting('autoDimEnd', this.value); });
+        document.getElementById('autoDimBrightness').addEventListener('change', function () { _postBoardSetting('autoDimBrightness', this.value); });
+        document.getElementById('nightOff').addEventListener('change', function () { _postBoardSetting('nightOff', this.checked ? '1' : '0'); });
+
+        // Per-player chess animation tuning — colour + speed for white & black.
+        document.getElementById('animPathColorW').addEventListener('change', function () { _postBoardSetting('animPathColorW', this.value); });
+        document.getElementById('animPathColorB').addEventListener('change', function () { _postBoardSetting('animPathColorB', this.value); });
+        document.getElementById('animSpeedW').addEventListener('input', function () {
+            document.getElementById('animSpeedWVal').textContent = parseFloat(this.value).toFixed(1) + '×';
+        });
+        document.getElementById('animSpeedW').addEventListener('change', function () { _postBoardSetting('animSpeedW', this.value); });
+        document.getElementById('animSpeedB').addEventListener('input', function () {
+            document.getElementById('animSpeedBVal').textContent = parseFloat(this.value).toFixed(1) + '×';
+        });
+        document.getElementById('animSpeedB').addEventListener('change', function () { _postBoardSetting('animSpeedB', this.value); });
+
+        // Advanced chess-animation tuning — live label updates + post on commit.
+        document.getElementById('dimOthersOnPickup').addEventListener('change', function () {
+            _postBoardSetting('dimOthersOnPickup', this.checked ? '1' : '0');
+        });
+        function _bindLiveSlider(id, valId, suffix, scale) {
+            const el = document.getElementById(id);
+            const lab = document.getElementById(valId);
+            el.addEventListener('input', function () {
+                const v = scale ? scale(this.value) : this.value;
+                lab.textContent = v + suffix;
+            });
+            el.addEventListener('change', function () { _postBoardSetting(id, this.value); });
+        }
+        _bindLiveSlider('knightPathPct', 'knightPathPctVal', '%');
+        _bindLiveSlider('pickupPulseMs', 'pickupPulseMsVal', ' ms');
+        _bindLiveSlider('walkBudgetMs', 'walkBudgetMsVal', ' ms');
+        _bindLiveSlider('replayIntervalMs', 'replayIntervalMsVal', ' s', v => (v / 1000).toFixed(1));
+        _bindLiveSlider('replayOverlayPct', 'replayOverlayPctVal', '%');
+        _bindLiveSlider('dimOthersPct', 'dimOthersPctVal', '%');
+
         // Handle board settings form submission
         document.getElementById('boardSettingsForm').addEventListener('submit', function (e) {
             e.preventDefault();
             const formData = new URLSearchParams();
             formData.append('brightness', document.getElementById('brightness').value);
             formData.append('dimMultiplier', document.getElementById('dimMultiplier').value);
-            formData.append('idleAnimation', document.getElementById('idleAnimation').value);
+            const _selAnim = document.querySelector('input[name="idleAnimation"]:checked');
+            formData.append('idleAnimation', _selAnim ? _selAnim.value : '0');
             formData.append('idleColor', document.getElementById('idleColor').value);
             formData.append('idleColor2', document.getElementById('idleColor2').value);
             formData.append('animSpeed', (document.getElementById('animSpeed').value / 100).toFixed(2));
             formData.append('idleSaturation', document.getElementById('idleSaturation').value);
+            formData.append('idleRandomColor', document.getElementById('idleRandomColor').checked ? '1' : '0');
+            formData.append('idleText', document.getElementById('idleText').value);
+            formData.append('textColor', document.getElementById('textColor').value);
+            formData.append('textBg', document.getElementById('textBg').value);
             formData.append('autoDim', _autoDimOn ? '1' : '0');
+            formData.append('nightOff', document.getElementById('nightOff').checked ? '1' : '0');
             formData.append('autoDimStart', document.getElementById('autoDimStart').value);
             formData.append('autoDimEnd', document.getElementById('autoDimEnd').value);
             formData.append('autoDimBrightness', document.getElementById('autoDimBrightness').value);
@@ -1221,6 +1565,270 @@
                 .catch(() => {
                     showAlert('Error saving settings. Please try again.');
                 });
+        });
+
+        // Idle-animation radio buttons: highlight selection + apply live on change
+        function updateAnimSelectionStyle() {
+            document.querySelectorAll('#idleAnimationGroup .anim-opt').forEach(function (opt) {
+                opt.classList.toggle('sel', opt.querySelector('input').checked);
+            });
+        }
+        function setIdleAnimationRadio(val) {
+            const radio = document.querySelector('input[name="idleAnimation"][value="' + val + '"]');
+            if (radio) radio.checked = true;
+            updateAnimSelectionStyle();
+            updateAnimSubControls();
+        }
+        document.querySelectorAll('input[name="idleAnimation"]').forEach(function (radio) {
+            radio.addEventListener('change', function () {
+                updateAnimSelectionStyle();
+                updateAnimSubControls();
+                const body = new URLSearchParams();
+                body.append('idleAnimation', this.value);
+                fetch('/board-settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: body
+                }).catch(() => {});
+            });
+        });
+
+        // Show/hide Text & Paint sub-controls based on the selected animation
+        function updateAnimSubControls() {
+            const sel = document.querySelector('input[name="idleAnimation"]:checked');
+            const v = sel ? sel.value : '';
+            document.getElementById('textControls').style.display = (v === '28') ? 'block' : 'none';
+            document.getElementById('paintControls').style.display = (v === '29') ? 'block' : 'none';
+            document.getElementById('audioControls').style.display = (v === '31') ? 'block' : 'none';
+        }
+        function _postBoardSetting(key, val) {
+            const body = new URLSearchParams();
+            body.append(key, val);
+            fetch('/board-settings', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body }).catch(() => {});
+        }
+        let _textTimer = null;
+        document.getElementById('idleText').addEventListener('input', function () {
+            const v = this.value; clearTimeout(_textTimer);
+            _textTimer = setTimeout(() => _postBoardSetting('idleText', v), 250);
+        });
+        document.getElementById('textColor').addEventListener('input', function () { _postBoardSetting('textColor', this.value); });
+        document.getElementById('textBg').addEventListener('input', function () { _postBoardSetting('textBg', this.value); });
+        document.querySelectorAll('input[name="textMode"]').forEach(function (r) { r.addEventListener('change', function () { _postBoardSetting('textMode', this.value); }); });
+
+        // Interactive paint editor (8x8) + 8-slot gallery + presets + photo import
+        (function () {
+            const ROWS = 8, COLS = 8;
+            const gridEl = document.getElementById('paintGrid');
+            const grid = new Array(ROWS * COLS).fill('#000000');
+            const cells = [];
+            let painting = false, eraseMode = false;
+            let activeSlot = 0;
+            let slotMeta = [];
+            for (let i = 0; i < ROWS * COLS; i++) {
+                const cell = document.createElement('div');
+                cell.style.cssText = 'aspect-ratio:1;border-radius:3px;background:#000;border:1px solid #333;';
+                cell.dataset.i = i;
+                cells.push(cell);
+                gridEl.appendChild(cell);
+            }
+            function brushColor() { return eraseMode ? '#000000' : document.getElementById('paintBrush').value; }
+            function paintCell(i) { const col = brushColor(); grid[i] = col; cells[i].style.background = col; }
+            function gridHex() { return grid.map(c => c.replace('#', '')).join(''); }
+            function applyHex(hex) {
+                if (!hex || hex.length < ROWS * COLS * 6) return;
+                for (let i = 0; i < ROWS * COLS; i++) {
+                    const col = '#' + hex.substr(i * 6, 6);
+                    grid[i] = col; cells[i].style.background = col;
+                }
+            }
+            let _paintTimer = null;
+            function pushGrid() {
+                clearTimeout(_paintTimer);
+                _paintTimer = setTimeout(() => {
+                    const body = new URLSearchParams();
+                    body.append('grid', gridHex());
+                    body.append('slot', String(activeSlot));
+                    fetch('/paint', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body }).catch(() => {});
+                }, 100);
+            }
+            function idxFromEvent(e) {
+                const t = document.elementFromPoint(e.clientX, e.clientY);
+                return (t && t.dataset && t.dataset.i !== undefined) ? parseInt(t.dataset.i) : -1;
+            }
+            gridEl.addEventListener('pointerdown', function (e) { painting = true; const i = idxFromEvent(e); if (i >= 0) { paintCell(i); pushGrid(); } e.preventDefault(); });
+            gridEl.addEventListener('pointermove', function (e) { if (!painting) return; const i = idxFromEvent(e); if (i >= 0) { paintCell(i); pushGrid(); } });
+            window.addEventListener('pointerup', function () { painting = false; });
+            document.getElementById('paintErase').addEventListener('click', function () { eraseMode = !eraseMode; this.style.background = eraseMode ? '#4D8CFF' : '#2a2a2a'; });
+            document.getElementById('paintClear').addEventListener('click', function () { for (let i = 0; i < grid.length; i++) { grid[i] = '#000000'; cells[i].style.background = '#000'; } pushGrid(); });
+
+            // Slot pills
+            const slotsEl = document.getElementById('paintSlots');
+            const nameInput = document.getElementById('paintName');
+            const activateBtn = document.getElementById('paintActivate');
+            function renderSlots() {
+                slotsEl.innerHTML = '';
+                for (let i = 0; i < 8; i++) {
+                    const meta = slotMeta[i] || {};
+                    const b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'pslot' + (i === activeSlot ? ' active' : '');
+                    b.textContent = (i + 1) + (meta.name ? ' · ' + meta.name : '') + (meta.active ? ' ●' : '');
+                    b.addEventListener('click', function () { loadSlot(i); });
+                    slotsEl.appendChild(b);
+                }
+            }
+            function loadSlot(i) {
+                activeSlot = i;
+                const meta = slotMeta[i] || {};
+                nameInput.value = meta.name || '';
+                fetch('/paint?slot=' + i).then(r => r.text()).then(hex => applyHex(hex)).catch(() => {});
+                renderSlots();
+            }
+            function refreshList() {
+                fetch('/paint/list').then(r => r.json()).then(arr => {
+                    slotMeta = arr || [];
+                    const cur = slotMeta.find(s => s && s.active);
+                    if (cur) { activeSlot = cur.slot; nameInput.value = cur.name || ''; }
+                    renderSlots();
+                }).catch(() => {});
+            }
+            activateBtn.addEventListener('click', function () {
+                const body = new URLSearchParams(); body.append('slot', String(activeSlot));
+                fetch('/paint/select', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+                    .then(() => refreshList()).catch(() => {});
+            });
+            nameInput.addEventListener('change', function () {
+                const body = new URLSearchParams(); body.append('slot', String(activeSlot)); body.append('name', this.value);
+                fetch('/paint/name', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+                    .then(() => refreshList()).catch(() => {});
+            });
+
+            // Presets palette
+            const presetsEl = document.getElementById('paintPresets');
+            if (window.PAINT_PRESETS && presetsEl) {
+                window.PAINT_PRESETS.forEach(function (p) {
+                    const hex = window.paintPresetToHex(p);
+                    const t = document.createElement('div');
+                    t.className = 'pthumb';
+                    t.title = p.name;
+                    for (let r = 0; r < 8; r++) {
+                        const rowEl = document.createElement('div');
+                        rowEl.className = 'pthumb-row';
+                        for (let c = 0; c < 8; c++) {
+                            const ce = document.createElement('div');
+                            ce.className = 'pthumb-cell';
+                            ce.style.background = '#' + hex.substr((r * 8 + c) * 6, 6);
+                            rowEl.appendChild(ce);
+                        }
+                        t.appendChild(rowEl);
+                    }
+                    t.addEventListener('click', function () { applyHex(hex); pushGrid(); });
+                    presetsEl.appendChild(t);
+                });
+            }
+
+            // Photo import: downscale to 8×8 and apply
+            const photoInput = document.getElementById('paintPhoto');
+            if (photoInput) {
+                photoInput.addEventListener('change', function (ev) {
+                    const file = ev.target.files && ev.target.files[0];
+                    if (!file) return;
+                    const img = new Image();
+                    img.onload = function () {
+                        const c = document.createElement('canvas');
+                        c.width = 8; c.height = 8;
+                        const ctx = c.getContext('2d');
+                        ctx.imageSmoothingEnabled = true;
+                        ctx.drawImage(img, 0, 0, 8, 8);
+                        const data = ctx.getImageData(0, 0, 8, 8).data;
+                        let hex = '';
+                        for (let i = 0; i < 64; i++) {
+                            const o = i * 4;
+                            hex += data[o].toString(16).padStart(2, '0')
+                                 + data[o + 1].toString(16).padStart(2, '0')
+                                 + data[o + 2].toString(16).padStart(2, '0');
+                        }
+                        applyHex(hex); pushGrid();
+                        URL.revokeObjectURL(img.src);
+                    };
+                    img.src = URL.createObjectURL(file);
+                    ev.target.value = '';
+                });
+            }
+
+            window.loadPaintGrid = function () { refreshList(); fetch('/paint').then(r => r.text()).then(hex => applyHex(hex)).catch(() => {}); };
+        })();
+
+        // Mic audio visualizer: capture mic → 8 log bands → stream to /audio while running
+        (function () {
+            let audioCtx = null, analyser = null, micStream = null, raf = null, running = false, lastSend = 0;
+            const btn = document.getElementById('audioToggle');
+            const statusEl = document.getElementById('audioStatus');
+            function bands8(freq) {
+                const out = new Uint8Array(8), n = freq.length;
+                let lo = 2;
+                for (let b = 0; b < 8; b++) {
+                    const hi = Math.max(lo + 1, Math.min(n, Math.floor(2 * Math.pow(n / 2, (b + 1) / 8))));
+                    let sum = 0, cnt = 0;
+                    for (let i = lo; i < hi; i++) { sum += freq[i]; cnt++; }
+                    lo = hi;
+                    out[b] = Math.min(255, (cnt ? sum / cnt : 0) * 1.6);
+                }
+                return out;
+            }
+            function loop(ts) {
+                if (!running) return;
+                const freq = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(freq);
+                if (ts - lastSend > 55) {
+                    lastSend = ts;
+                    const b = bands8(freq);
+                    let hex = '';
+                    for (let i = 0; i < 8; i++) hex += b[i].toString(16).padStart(2, '0');
+                    fetch('/audio', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'bands=' + hex }).catch(() => {});
+                }
+                raf = requestAnimationFrame(loop);
+            }
+            async function start() {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    statusEl.textContent = '⚠ Mikro nicht verfügbar — Browser braucht HTTPS/sicheren Kontext.';
+                    return;
+                }
+                try {
+                    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    const src = audioCtx.createMediaStreamSource(micStream);
+                    analyser = audioCtx.createAnalyser();
+                    analyser.fftSize = 256;
+                    analyser.smoothingTimeConstant = 0.6;
+                    src.connect(analyser);
+                    running = true;
+                    btn.textContent = '⏹ Mikrofon stoppen';
+                    btn.style.background = '#f44336';
+                    statusEl.textContent = 'Mikro aktiv — Spektrum wird gestreamt.';
+                    raf = requestAnimationFrame(loop);
+                } catch (e) {
+                    statusEl.textContent = '⚠ Zugriff verweigert/blockiert. Auf http braucht der Browser einen sicheren Kontext (HTTPS).';
+                }
+            }
+            function stop() {
+                running = false;
+                if (raf) cancelAnimationFrame(raf);
+                if (micStream) micStream.getTracks().forEach(t => t.stop());
+                if (audioCtx) audioCtx.close();
+                micStream = audioCtx = analyser = null;
+                btn.textContent = '🎤 Mikrofon aktivieren';
+                btn.style.background = '#4D8CFF';
+                statusEl.textContent = 'Gestoppt.';
+            }
+            btn.addEventListener('click', function () { running ? stop() : start(); });
+        })();
+
+        // Random-color toggle: apply live too
+        document.getElementById('idleRandomColor').addEventListener('change', function () {
+            const body = new URLSearchParams();
+            body.append('idleRandomColor', this.checked ? '1' : '0');
+            fetch('/board-settings', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body }).catch(() => {});
         });
 
         // Hardware config functions
@@ -1543,6 +2151,63 @@
                 location.reload();   // clears the applied :root overrides
             });
             load();
+        })();
+
+        // Status pill: polls /board-update for mode + active lesson; routes accordingly.
+        (function () {
+            const MODE_NAMES = { 0: 'Idle', 1: 'Spiel (Mensch)', 2: 'Spiel (Bot)', 3: 'Lichess', 4: 'Sensor-Test', 5: 'Simulation', 6: 'Lernen' };
+            let _modeNum = 0;
+            function updatePill() {
+                const el = document.getElementById('modeStatusPill');
+                if (!el) return;
+                if (!el._wired) {
+                    el._wired = true;
+                    el.style.cursor = 'pointer';
+                    el.addEventListener('click', function () {
+                        window.location.href = (_modeNum === 0) ? './game.html' : './board.html';
+                    });
+                }
+                fetch('/board-update').then(r => r.json()).then(d => {
+                    _modeNum = (typeof d.mode === 'number') ? d.mode : parseInt(d.mode) || 0;
+                    if (_modeNum === 0) {
+                        el.textContent = 'Idle ›';
+                        el.title = 'Neues Spiel starten';
+                    } else if (_modeNum === 6 && d.lesson && d.lesson.openingName) {
+                        const lvl = d.lesson.level ? ' · L' + d.lesson.level : '';
+                        el.textContent = '📚 ' + d.lesson.openingName + lvl + ' ›';
+                        el.title = 'Zur Übung';
+                    } else {
+                        el.textContent = '♟ ' + (MODE_NAMES[_modeNum] || d.modeName || ('Modus ' + _modeNum)) + ' ›';
+                        el.title = 'Zum laufenden Spiel';
+                    }
+                }).catch(() => {});
+            }
+            updatePill();
+            setInterval(updatePill, 5000);
+        })();
+
+        // Diagnose dashboard: poll /debug-state every 3s while the section is expanded.
+        (function () {
+            function fmtUptime(s) { s = s | 0; const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return h + 'h ' + m + 'm ' + x + 's'; }
+            function refreshDiag() {
+                fetch('/debug-state').then(r => r.json()).then(d => {
+                    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+                    set('diag-ip', d.ip || '—');
+                    set('diag-ssid', d.ssid || '—');
+                    set('diag-rssi', d.rssi !== undefined ? (d.rssi + ' dBm') : '—');
+                    set('diag-heap', d.freeHeap ? Math.round(d.freeHeap / 1024) + ' KB' : '—');
+                    set('diag-uptime', d.uptime !== undefined ? fmtUptime(d.uptime) : '—');
+                    set('diag-cpu', d.cpuMHz ? d.cpuMHz + ' MHz' : '—');
+                    set('diag-sdk', d.sdkVer || '—');
+                    set('diag-mode', d.mode || '—');
+                    set('diag-anim', d.idleAnim !== undefined ? String(d.idleAnim) : '—');
+                    set('diag-lichess', d.hasLichessToken ? '✓ vorhanden' : '— fehlt');
+                }).catch(() => {});
+            }
+            setInterval(function () {
+                const c = document.getElementById('diag-content');
+                if (c && c.classList.contains('expanded')) refreshDiag();
+            }, 3000);
         })();
     </script>
 </body>
