@@ -241,8 +241,6 @@ class WiFiManagerESP32 {
   OtaUpdateInfo lastUpdateInfo;
   bool otaChecked;
   bool autoOtaEnabled;
-  // Temporary file for web asset TAR upload (needed because the TAR parser requires a seekable Stream)
-  File otaTarFile;
 
  public:
   WiFiManagerESP32(BoardDriver* boardDriver, MoveHistory* moveHistory);

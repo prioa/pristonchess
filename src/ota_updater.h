@@ -62,6 +62,22 @@ class OtaUpdater {
 
   // Recursively remove all LittleFS files except those under /games/
   static void removeWebAssets(const String& dirPath = "/");
+
+  // --- Streaming TAR parser state (beginWebStream/feedWebStream/endWebStream).
+  // The upload arrives as async chunks of arbitrary size that can split a
+  // 512-byte TAR block across callbacks, so we reassemble blocks here and
+  // process them one at a time, writing each file straight to LittleFS.
+  void wsProcessBlock(const uint8_t* block);    // handle one full 512-byte block
+  uint8_t m_wsBlock[512];     // partial-block accumulator
+  size_t  m_wsFill = 0;       // bytes currently in m_wsBlock
+  bool    m_wsActive = false; // begin() called, end() not yet
+  bool    m_wsDone = false;   // end-of-archive (zero block) seen
+  bool    m_wsInFile = false; // currently consuming a file's data blocks
+  bool    m_wsSkip = false;   // current entry is skipped (dir / games / open failed)
+  size_t  m_wsFileRemaining = 0;       // real file bytes still to write
+  size_t  m_wsDataBlocksRemaining = 0; // 512-byte data blocks still to consume
+  File    m_wsFile;           // current output file (when !m_wsSkip)
+  int     m_wsFiles = 0;      // files written this session
 };
 
 #endif // OTA_UPDATER_H

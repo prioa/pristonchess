@@ -1633,41 +1633,26 @@ void WiFiManagerESP32::onFirmwareUploadBody(AsyncWebServerRequest* request, uint
 }
 
 void WiFiManagerESP32::onWebAssetsUploadBody(AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
-  // Can't use applyWebAssetsFromStream() directly — the TAR parser reads 512-byte headers
-  // sequentially from a Stream, but async chunks can split a header across callbacks.
-  // So we buffer the TAR to a temp file, then pass it as a Stream to the parser.
+  // Stream the TAR straight to LittleFS: the old path buffered the whole archive
+  // to a temp file first, but tar + extracted files together blow past the 320 KB
+  // partition. OtaUpdater's streaming parser reassembles 512-byte blocks across
+  // async chunks and writes each entry directly, so only the extracted files
+  // ever occupy the FS.
   static std::atomic<bool>* stopFlag = nullptr;
   if (index == 0) {
     if (stopFlag == nullptr)
       stopFlag = boardDriver->startWaitingAnimation();
     Serial.printf("OTA: Web assets upload started (%d bytes)\n", total);
-    otaTarFile = LittleFS.open("/ota_temp.tar", "w");
-    if (!otaTarFile) {
-      Serial.println("OTA: Failed to create temp file");
-      return;
-    }
+    otaUpdater.beginWebStream();
   }
-  if (otaTarFile)
-    otaTarFile.write(data, len);
+  otaUpdater.feedWebStream(data, len);
   if (index + len == total) {
-    if (otaTarFile) {
-      otaTarFile.close();
-      File tarFile = LittleFS.open("/ota_temp.tar", "r");
-      if (tarFile) {
-        size_t tarSize = tarFile.size();
-        bool success = otaUpdater.applyWebAssetsFromStream(tarFile, tarSize);
-        tarFile.close();
-        LittleFS.remove("/ota_temp.tar");
-        if (success)
-          request->send(200, "text/plain", "Web assets updated successfully!");
-        else
-          request->send(500, "text/plain", "Web assets update failed");
-      } else {
-        request->send(500, "text/plain", "Failed to read temp file");
-      }
-    } else {
-      request->send(500, "text/plain", "Upload failed");
-    }
+    int files = 0;
+    bool success = otaUpdater.endWebStream(&files);
+    if (success)
+      request->send(200, "text/plain", "Web assets updated successfully!");
+    else
+      request->send(500, "text/plain", "Web assets update failed");
     if (stopFlag) {
       stopFlag->store(true);
       stopFlag = nullptr;

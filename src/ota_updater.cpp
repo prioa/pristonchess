@@ -349,6 +349,141 @@ bool OtaUpdater::applyWebAssetsFromStream(Stream& stream, size_t totalSize) {
   return filesWritten > 0;
 }
 
+// ========== Streaming web-assets upload ==========
+// Same TAR semantics as applyWebAssetsFromStream(), but driven by async upload
+// chunks instead of a seekable Stream. Each completed 512-byte block is handed
+// to wsProcessBlock(); files are written straight to their final path, so peak
+// FS usage is just the extracted files (no whole-tar temp copy) and the 282 KB
+// asset set fits the 320 KB partition.
+
+void OtaUpdater::beginWebStream() {
+  Serial.println("OTA: Web assets stream starting");
+  removeWebAssets("/");
+  m_wsFill = 0;
+  m_wsActive = true;
+  m_wsDone = false;
+  m_wsInFile = false;
+  m_wsSkip = false;
+  m_wsFileRemaining = 0;
+  m_wsDataBlocksRemaining = 0;
+  m_wsFiles = 0;
+}
+
+void OtaUpdater::wsProcessBlock(const uint8_t* block) {
+  if (m_wsDone) return;  // past end-of-archive: ignore trailing zero/padding blocks
+
+  if (m_wsInFile) {
+    // A data (or trailing-padding) block for the current entry.
+    size_t w = m_wsFileRemaining < TAR_BLOCK_SIZE ? m_wsFileRemaining : TAR_BLOCK_SIZE;
+    if (!m_wsSkip && m_wsFile && w > 0)
+      m_wsFile.write(block, w);
+    m_wsFileRemaining -= w;
+    m_wsDataBlocksRemaining--;
+    if (m_wsDataBlocksRemaining == 0) {
+      if (!m_wsSkip && m_wsFile) {
+        m_wsFile.close();
+        m_wsFiles++;
+      }
+      m_wsInFile = false;
+      m_wsSkip = false;
+    }
+    return;
+  }
+
+  // Header block. End-of-archive is a fully zero block.
+  bool allZero = true;
+  for (size_t i = 0; i < TAR_BLOCK_SIZE; i++) {
+    if (block[i] != 0) { allZero = false; break; }
+  }
+  if (allZero) { m_wsDone = true; return; }
+
+  char filename[101];
+  memcpy(filename, block, 100);
+  filename[100] = '\0';
+
+  char sizeStr[13];
+  memcpy(sizeStr, block + 124, 12);
+  sizeStr[12] = '\0';
+  size_t fileSize = strtoul(sizeStr, nullptr, 8);
+
+  char typeFlag = block[156];
+
+  size_t dataBlocks = (fileSize + TAR_BLOCK_SIZE - 1) / TAR_BLOCK_SIZE;
+
+  // Directories, symlinks and zero-byte entries carry no file data we keep.
+  if (typeFlag == '5' || typeFlag == '2' || fileSize == 0) {
+    if (dataBlocks > 0) {
+      m_wsInFile = true;
+      m_wsSkip = true;
+      m_wsFileRemaining = fileSize;
+      m_wsDataBlocksRemaining = dataBlocks;
+    }
+    return;
+  }
+
+  String outPath = "/" + String(filename);
+  while (outPath.endsWith("/")) outPath.remove(outPath.length() - 1);
+
+  // Preserve saved games — never overwrite /games/.
+  bool skip = outPath.startsWith("/games/") || outPath == "/games";
+
+  if (!skip) {
+    int lastSlash = outPath.lastIndexOf('/');
+    if (lastSlash > 0)
+      LittleFS.mkdir(outPath.substring(0, lastSlash));
+    m_wsFile = LittleFS.open(outPath, "w");
+    if (!m_wsFile) {
+      Serial.printf("OTA: Failed to create file: %s\n", outPath.c_str());
+      skip = true;  // consume the data blocks but drop them
+    } else {
+      Serial.printf("OTA: Extracting %s (%u bytes)\n", outPath.c_str(), (unsigned)fileSize);
+    }
+  }
+
+  m_wsInFile = true;
+  m_wsSkip = skip;
+  m_wsFileRemaining = fileSize;
+  m_wsDataBlocksRemaining = dataBlocks;
+}
+
+void OtaUpdater::feedWebStream(const uint8_t* data, size_t len) {
+  if (!m_wsActive) return;
+  // Reassemble arbitrary-sized chunks into 512-byte TAR blocks.
+  while (len > 0) {
+    size_t need = TAR_BLOCK_SIZE - m_wsFill;
+    size_t take = len < need ? len : need;
+    memcpy(m_wsBlock + m_wsFill, data, take);
+    m_wsFill += take;
+    data += take;
+    len -= take;
+    if (m_wsFill == TAR_BLOCK_SIZE) {
+      wsProcessBlock(m_wsBlock);
+      m_wsFill = 0;
+    }
+  }
+}
+
+bool OtaUpdater::endWebStream(int* filesOut) {
+  // Close any file left open by a truncated/misaligned archive.
+  if (m_wsInFile && !m_wsSkip && m_wsFile) {
+    m_wsFile.close();
+    m_wsFiles++;
+  }
+  m_wsInFile = false;
+  m_wsActive = false;
+  m_wsFill = 0;
+
+  Serial.printf("OTA: Web assets stream complete. %d files extracted.\n", m_wsFiles);
+  if (filesOut) *filesOut = m_wsFiles;
+
+  if (m_wsFiles > 0)
+    boardDriver->flashBoardAnimation(LedColors::Cyan, 2);
+  else
+    boardDriver->flashBoardAnimation(LedColors::Red, 2);
+
+  return m_wsFiles > 0;
+}
+
 void OtaUpdater::applyUpdate(const OtaUpdateInfo& info) {
   // Apply web assets first (doesn't require reboot)
   if (!info.webAssetsUrl.isEmpty()) {
