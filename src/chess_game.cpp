@@ -4,6 +4,7 @@
 #include "openings.h"
 #include "wifi_manager_esp32.h"
 #include <string.h>
+#include "serial_tee.h"  // must be last: redefines Serial -> tee
 
 const char ChessGame::INITIAL_BOARD[8][8] = {
     {'r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'}, // row 0 = rank 8 (Black pieces, top row)
@@ -168,6 +169,22 @@ void ChessGame::waitForBoardSetup(const char targetBoard[8][8], bool showFirewor
     boardDriver->fireworkAnimation();
 }
 
+void ChessGame::renderBoardLEDs() {
+  boardDriver->acquireLEDs();
+  for (int row = 0; row < 8; row++) {
+    for (int col = 0; col < 8; col++) {
+      char p = board[row][col];
+      if (p == ' ' || p == '\0')
+        boardDriver->setSquareLED(row, col, LedColors::Off);
+      else
+        boardDriver->setSquareLED(
+            row, col, getPlayerLedColor(ChessUtils::isWhitePiece(p) ? 'w' : 'b'));
+    }
+  }
+  boardDriver->showLEDs();
+  boardDriver->releaseLEDs();
+}
+
 void ChessGame::applyMove(int fromRow, int fromCol, int toRow, int toCol, char promotion, bool isRemoteMove) {
   char piece = board[fromRow][fromCol];
   char capturedPiece = board[toRow][toCol];
@@ -211,7 +228,7 @@ void ChessGame::applyMove(int fromRow, int fromCol, int toRow, int toCol, char p
   // colour + speed comes from the per-player chess-animation settings, hence
   // we pass the moving piece's side.
   char mover = ChessUtils::isWhitePiece(piece) ? 'w' : 'b';
-  if ((isRemoteMove || replaying) && !isCastling) {
+  if ((isRemoteMove || replaying || animateLocalMoves) && !isCastling) {
     boardDriver->movePathAnimation(fromRow, fromCol, toRow, toCol, mover);
     boardDriver->waitForAnimationQueue(3000);
     // Soft pulse on the destination so the player gets a clear "the piece

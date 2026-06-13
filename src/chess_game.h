@@ -25,6 +25,7 @@ class ChessGame {
   char currentTurn; // 'w' or 'b'
   bool gameOver;
   bool replaying;                   // True while replaying moves during resume (suppresses LEDs and physical move waits)
+  bool animateLocalMoves = false;   // When true, physically-played moves also get the LED walk trail (HvH). Off for bot/lichess (those only animate the remote side).
   std::atomic<bool>* stopAnimation; // Stop flag for cancellable animations (thinking/waiting), managed by subclasses
 
   // Game-end metadata (set when gameOver becomes true). Surfaced via
@@ -77,6 +78,11 @@ class ChessGame {
 
   void setBoardStateFromFEN(const String& fen);
   bool isGameOver() const { return gameOver; }
+
+  // Paint every occupied square in its side's player colour (empty squares
+  // off) — the "resting glow" that shows where the pieces stand. Used by the
+  // simulation and the Human-vs-Human mode between moves.
+  void renderBoardLEDs();
 
   // Read-only accessors for non-game subsystems (board driver, web UI).
   char getCurrentTurn() const { return currentTurn; }

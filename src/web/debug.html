@@ -227,6 +227,20 @@
 </div>
 
 <div class="section">
+  <h2>🖥️ Serial-Monitor (live)</h2>
+  <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+    <button id="serialPauseBtn" onclick="toggleSerialPause()">⏸ Pause</button>
+    <button onclick="clearSerialMon()">🗑 Leeren</button>
+    <label style="font-size:11px;color:#888;"><input type="checkbox" id="serialAutoscroll" checked> Auto-Scroll</label>
+    <span id="serialStatus" style="font-size:11px;color:#555;"></span>
+  </div>
+  <pre id="serialMon" style="background:#0a0a0a;border:1px solid #222;padding:8px;font-size:11px;line-height:1.35;color:#9f9;height:300px;overflow:auto;margin:0;white-space:pre-wrap;word-break:break-word;"></pre>
+  <div style="font-size:11px;color:#555;margin-top:2px;">
+    Spiegelt die <code>Serial</code>-Ausgabe des ESP32 (Ringpuffer ~8&nbsp;KB, Abfrage alle 1,5&nbsp;s). Ersetzt den USB-Monitor fürs Debuggen ohne Kabel.
+  </div>
+</div>
+
+<div class="section">
   <h2>Letzte Änderungen</h2>
   <div id="log"></div>
 </div>
@@ -602,6 +616,47 @@ async function dbgColWalk() {
   } catch (e) {}
   dbgLog('Walking fertig — Scan wieder normal.');
 }
+
+// === Serial-Monitor: pollt /debug/log nach dem Delta und hängt an ===
+let serialSeq = 0;          // letzte gesehene Sequenznummer (Byte-Zähler)
+let serialPaused = false;
+let serialPrimed = false;   // erster Fetch: nur Sequenz setzen, Backlog nicht dumpen
+const serialMon = document.getElementById('serialMon');
+function toggleSerialPause() {
+  serialPaused = !serialPaused;
+  document.getElementById('serialPauseBtn').textContent = serialPaused ? '▶︎ Weiter' : '⏸ Pause';
+}
+function clearSerialMon() { serialMon.textContent = ''; }
+async function pollSerialLog() {
+  if (!serialPaused) {
+    try {
+      const ac = new AbortController();
+      const tid = setTimeout(() => ac.abort(), 2500);
+      const r = await fetch('/debug/log?after=' + serialSeq, {signal: ac.signal});
+      clearTimeout(tid);
+      const j = await r.json();
+      // Reboot erkannt (Sequenz sprang zurück) → Anzeige resetten.
+      if (j.seq < serialSeq) { serialMon.textContent = ''; serialPrimed = false; }
+      serialSeq = j.seq;
+      if (!serialPrimed) {
+        serialPrimed = true;            // Backlog überspringen, ab jetzt live
+      } else if (j.data && j.data.length) {
+        const atBottom = serialMon.scrollTop + serialMon.clientHeight >= serialMon.scrollHeight - 20;
+        serialMon.textContent += j.data;
+        // Anzeige begrenzen (~40 KB), damit der Browser nicht vollläuft.
+        if (serialMon.textContent.length > 40000)
+          serialMon.textContent = serialMon.textContent.slice(-32000);
+        if (document.getElementById('serialAutoscroll').checked && atBottom)
+          serialMon.scrollTop = serialMon.scrollHeight;
+      }
+      document.getElementById('serialStatus').textContent = 'verbunden · seq ' + j.seq;
+    } catch (e) {
+      document.getElementById('serialStatus').textContent = '⚠️ keine Verbindung';
+    }
+  }
+  setTimeout(pollSerialLog, 1500);
+}
+pollSerialLog();
 
 poll();
 </script>

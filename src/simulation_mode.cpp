@@ -2,6 +2,7 @@
 #include "chess_utils.h"
 #include "clock_state.h"
 #include "wifi_manager_esp32.h"
+#include "serial_tee.h"  // must be last: redefines Serial -> tee
 
 // Owned by main.cpp.
 extern ClockState    chessClock;
@@ -153,22 +154,6 @@ void SimulationMode::update() {
     Serial.println("[SIM] restarting playback (rotating script)");
     begin();
   }
-}
-
-void SimulationMode::renderBoardLEDs() {
-  boardDriver->acquireLEDs();
-  for (int row = 0; row < 8; row++) {
-    for (int col = 0; col < 8; col++) {
-      char p = board[row][col];
-      if (p == ' ' || p == '\0')
-        boardDriver->setSquareLED(row, col, LedColors::Off);
-      else
-        boardDriver->setSquareLED(
-            row, col, getPlayerLedColor(ChessUtils::isWhitePiece(p) ? 'w' : 'b'));
-    }
-  }
-  boardDriver->showLEDs();
-  boardDriver->releaseLEDs();
 }
 
 // Parse algebraic square ("e2") → board (row,col) with row 0 = rank 8.

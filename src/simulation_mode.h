@@ -21,9 +21,8 @@ class SimulationMode : public ChessGame {
 
   // Manual mode: no scripted playback — the board is driven by web moves.
   void setManual(bool m) { manual = m; }
-  // Mirror the current position onto the LEDs (occupied squares in team colour).
-  // Public so the manual board-edit path (main.cpp) can refresh after a web move.
-  void renderBoardLEDs();
+  // renderBoardLEDs() is inherited from ChessGame (occupied squares in team
+  // colour). The manual board-edit path (main.cpp) calls it after a web move.
   // Render position + a move highlight: source square + legal target squares
   // (algebraic, e.g. from="e2", targetsCsv="e3,e4"). Used by manual mode.
   void renderHighlights(const String& fromSq, const String& targetsCsv);

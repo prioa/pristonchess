@@ -3,6 +3,7 @@
 #include "led_colors.h"
 #include "wifi_manager_esp32.h"
 #include <Arduino.h>
+#include "serial_tee.h"  // must be last: redefines Serial -> tee
 
 // Dummy BotConfig for parent constructor (not used in Lichess mode)
 static BotConfig dummyBotConfig = {StockfishSettings::medium(), false};

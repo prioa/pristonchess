@@ -7,6 +7,7 @@
 #include <LittleFS.h>
 #include <Update.h>
 #include <WiFi.h>
+#include "serial_tee.h"  // must be last: redefines Serial -> tee
 
 // TAR header is always 512 bytes
 static const size_t TAR_BLOCK_SIZE = 512;

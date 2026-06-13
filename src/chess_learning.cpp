@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <string.h>
+#include "serial_tee.h"  // must be last: redefines Serial -> tee
 
 static constexpr const char* LEARN_NVS_NAMESPACE = "learn";
 

@@ -17,6 +17,7 @@
 #include "wifi_manager_esp32.h"
 #include <LittleFS.h>
 #include <time.h>
+#include "serial_tee.h"  // must be last: redefines Serial -> tee
 
 // ---------------------------
 // Game State and Configuration
@@ -167,15 +168,25 @@ void setup() {
   Serial.println("         OpenChess Starting Up");
   Serial.println("         Firmware version: " FIRMWARE_VERSION);
   Serial.println("================================================");
-  if (!ChessUtils::ensureNvsInitialized())
+  bool nvsOk = ChessUtils::ensureNvsInitialized();
+  if (!nvsOk)
     Serial.println("WARNING: NVS init failed (Preferences may not work)");
-  if (!LittleFS.begin(true))
+  bool fsOk = LittleFS.begin(true);
+  if (!fsOk)
     Serial.println("ERROR: LittleFS mount failed!");
   else
     Serial.println("LittleFS mounted successfully");
   moveHistory.begin();
   profiles.begin();
   boardDriver.beginHardware();
+
+  // LEDs are live now — surface any early-boot errors that happened before the
+  // matrix was available, then play the wake-up animation BEFORE the WiFi phase
+  // so the boot order reads naturally: wake → network status → menu.
+  if (!fsOk)  boardDriver.showBootMessage("FS ERR", LedColors::Red);
+  if (!nvsOk) boardDriver.showBootMessage("NVS ERR", LedColors::Red);
+  boardDriver.startupAnimation();
+
   wifiManager.begin();
 
   // NOTE: boardDriver.checkCalibration() is intentionally NOT called at
@@ -220,7 +231,7 @@ void setup() {
     boardDriver.checkCalibration();
   }
 
-  boardDriver.startupAnimation();
+  // startupAnimation() already played before the WiFi phase (see above).
   showGameSelection();
 }
 
@@ -240,6 +251,11 @@ static ChessGame* _activeGameForCurrentMode() {
 void loop() {
   // Phantom-press logger: cheap no-op when inactive, samples sensors when armed.
   boardDriver.phantomTick();
+
+  // A device just joined the board's AP → brief, non-destructive green pulse.
+  // Consumed here (main thread) so the LED access is in a safe context.
+  if (wifiManager.consumeApClientConnected())
+    boardDriver.pulseUserConnected();
 
   // Resolve the active game (if any) for this tick — drives the clock and
   // the web status push below.

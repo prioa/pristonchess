@@ -193,8 +193,13 @@ class WiFiManagerESP32 {
   bool tryConnect(const String& ssid, const String& password, const uint8_t* bssid = nullptr, uint8_t channel = 0);
   bool tryConnectProfile(int index);
   bool connectToSavedProfile(); // Try all saved profiles, promote winner; returns true if connected
-  void startAPFallback();
+  bool startAPFallback();       // Bring up the softAP fallback; returns true if the AP is up
   void performScan();
+
+  // Set by the WiFi event task when a client joins the board's AP; consumed
+  // (and cleared) on the main thread via consumeApClientConnected() so the LED
+  // pulse runs in a safe context, not inside the event callback.
+  volatile bool apClientConnected = false;
 
   // Web interface methods
   String getWiFiInfoJSON();
@@ -242,6 +247,14 @@ class WiFiManagerESP32 {
  public:
   WiFiManagerESP32(BoardDriver* boardDriver, MoveHistory* moveHistory);
   void begin();
+
+  // Returns true exactly once after a device connected to the board's AP, then
+  // resets the flag. Call from loop() to trigger the LED "user connected" pulse.
+  bool consumeApClientConnected() {
+    if (!apClientConnected) return false;
+    apClientConnected = false;
+    return true;
+  }
 
   // OTA update support
   OtaUpdater& getOtaUpdater() { return otaUpdater; }

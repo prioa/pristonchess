@@ -4,8 +4,13 @@
 #include "move_history.h"
 #include "wifi_manager_esp32.h"
 #include <Arduino.h>
+#include "serial_tee.h"  // must be last: redefines Serial -> tee
 
-ChessMoves::ChessMoves(BoardDriver* bd, ChessEngine* ce, WiFiManagerESP32* wm, MoveHistory* mh) : ChessGame(bd, ce, wm, mh) {}
+ChessMoves::ChessMoves(BoardDriver* bd, ChessEngine* ce, WiFiManagerESP32* wm, MoveHistory* mh) : ChessGame(bd, ce, wm, mh) {
+  // Human-vs-Human: play the LED walk trail for physically-made moves too, and
+  // keep the occupied squares glowing between moves (see update()).
+  animateLocalMoves = true;
+}
 
 void ChessMoves::begin() {
   Serial.println("=== Starting Chess Moves Mode ===");
@@ -34,6 +39,20 @@ void ChessMoves::update() {
     applyMove(fromRow, fromCol, toRow, toCol);
     updateGameStatus();
     wifiManager->updateBoardState(ChessUtils::boardToFEN(board, currentTurn, chessEngine), ChessUtils::evaluatePosition(board));
+    // Restore the resting glow after the move's walk/capture/check animations
+    // have drained — those each end with clearAllLEDs and would otherwise leave
+    // the board dark. Skip when the game just ended so we don't paint over the
+    // checkmate cinematic.
+    if (!gameOver) {
+      boardDriver->waitForAnimationQueue();
+      renderBoardLEDs();
+    }
+  } else if (!gameOver) {
+    // Idle / cancelled-pickup: keep the occupied squares lit. tryPlayerMove
+    // blocks internally during an active pickup (its source/target highlights
+    // persist there), so this only repaints between moves — cheap and avoids a
+    // dark board after a cancelled or illegal pickup clears the LEDs.
+    renderBoardLEDs();
   }
 
   boardDriver->updateSensorPrev();

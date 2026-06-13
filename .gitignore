@@ -18,3 +18,7 @@ data/
 # Local diagnostics / scratch
 a3144_test/
 Bildschirmfoto*.png
+
+# OTA-Release-Artefakte (werden an GitHub-Releases gehängt, nicht getrackt)
+firmware.bin
+web_assets.tar

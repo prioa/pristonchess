@@ -4,6 +4,7 @@
 #include <HTTPClient.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include "serial_tee.h"  // must be last: redefines Serial -> tee
 
 extern Profiles profiles;
 

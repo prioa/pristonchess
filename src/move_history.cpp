@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <sys/stat.h>
 #include <time.h>
+#include "serial_tee.h"  // must be last: redefines Serial -> tee
 
 MoveHistory::MoveHistory() : recording(false) {
   memset(&header, 0, sizeof(header));

@@ -3,6 +3,7 @@
 
 extern "C" {
 #include "nvs_flash.h"
+#include "serial_tee.h"  // must be last: redefines Serial -> tee
 }
 
 String ChessUtils::castlingRightsToString(uint8_t rights) {

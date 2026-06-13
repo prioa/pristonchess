@@ -5,6 +5,7 @@
 #include "stockfish_api.h"
 #include "wifi_manager_esp32.h"
 #include <Arduino.h>
+#include "serial_tee.h"  // must be last: redefines Serial -> tee
 
 ChessBot::ChessBot(BoardDriver* bd, ChessEngine* ce, WiFiManagerESP32* wm, MoveHistory* mh, BotConfig cfg) : ChessGame(bd, ce, wm, mh), botConfig(cfg), currentEvaluation(0.0) {}
 

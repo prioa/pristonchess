@@ -16,6 +16,7 @@ extern Profiles profiles;
 #include <Preferences.h>
 #include <Update.h>
 #include <esp_wifi.h>
+#include "serial_tee.h"  // must be last: redefines Serial -> tee
 
 static const char* INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 // Samsung captive portal detection is more reliable when SoftAP is not in RFC1918 ranges.
@@ -47,6 +48,12 @@ void WiFiManagerESP32::begin() {
     prefs.end();
   }
 
+  // Signal that a device joined our AP — set the flag from the WiFi event task,
+  // consumed on the main thread (loop) so the LED pulse runs in a safe context.
+  WiFi.onEvent([this](arduino_event_id_t event, arduino_event_info_t info) {
+    apClientConnected = true;
+  }, ARDUINO_EVENT_WIFI_AP_STACONNECTED);
+
   bool connected = connectToSavedProfile();
   Serial.println("==== WiFi Connection Information ====");
   if (connected) {
@@ -54,14 +61,18 @@ void WiFiManagerESP32::begin() {
     Serial.println("- SSID: " + profiles[0].ssid);
     Serial.println("- Password: " + profiles[0].password);
     Serial.println("- Website: http://" MDNS_HOSTNAME ".local (" + WiFi.localIP().toString() + ")");
+    if (boardDriver) boardDriver->showBootMessage("WIFI OK", LedColors::Green);
   } else {
-    startAPFallback();
+    bool apOk = startAPFallback();
     Serial.println("A WiFi Access Point was created:");
     Serial.println("- SSID: " AP_SSID);
     Serial.println("- Password: " AP_PASSWORD);
     Serial.println("- Website: http://" MDNS_HOSTNAME ".local (" + WiFi.softAPIP().toString() + ")");
     Serial.println("- MAC Address: " + WiFi.softAPmacAddress());
     Serial.println("Configure WiFi credentials from WebUI to join your WiFi network");
+    if (boardDriver)
+      boardDriver->showBootMessage(apOk ? "AP MODE" : "AP ERR",
+                                   apOk ? LedColors::Yellow : LedColors::Red);
   }
   Serial.println("=====================================\n");
 
@@ -342,6 +353,24 @@ void WiFiManagerESP32::begin() {
       JsonArray row = g.add<JsonArray>();
       for (int c = 0; c < 8; c++) row.add(grid[r][c]);
     }
+    String out; serializeJson(d, out);
+    request->send(200, "application/json", out);
+  });
+  // Serial-log tail: returns log bytes newer than ?after=<seq> plus the new
+  // sequence number, so the web monitor can poll for just the delta. The tee
+  // (serial_tee.h) mirrors every Serial.print* into the ring buffer this reads.
+  server.on("/debug/log", HTTP_GET, [](AsyncWebServerRequest* request) {
+    uint32_t after = request->hasParam("after")
+                         ? (uint32_t)strtoul(request->getParam("after")->value().c_str(), nullptr, 10)
+                         : 0;
+    // Single-threaded AsyncTCP task → a function-local static buffer is safe
+    // and keeps 2 KB off the limited async-task stack.
+    static char logbuf[2048];
+    size_t n = 0;
+    uint32_t newSeq = serialLogFetch(after, logbuf, sizeof(logbuf), &n);
+    JsonDocument d;
+    d["seq"] = newSeq;
+    d["data"] = (const char*)logbuf;
     String out; serializeJson(d, out);
     request->send(200, "application/json", out);
   });
@@ -1808,17 +1837,19 @@ bool WiFiManagerESP32::connectToSavedProfile() {
   return false;
 }
 
-void WiFiManagerESP32::startAPFallback() {
+bool WiFiManagerESP32::startAPFallback() {
   Serial.println("Starting AP fallback...");
   WiFi.mode(WIFI_AP);
   if (!WiFi.softAPConfig(AP_IP, AP_GATEWAY, AP_SUBNET))
     Serial.println("ERROR: Failed to configure AP IP settings!");
-  if (!WiFi.softAP(AP_SSID, AP_PASSWORD))
+  bool apOk = WiFi.softAP(AP_SSID, AP_PASSWORD);
+  if (!apOk)
     Serial.println("ERROR: Failed to create Access Point!");
   startMDNS();
   connectedProfileIndex = -1;
   startCaptivePortal();
   pendingWiFi.action = SCAN_NETWORKS;
+  return apOk;
 }
 
 void WiFiManagerESP32::startCaptivePortal() {

@@ -2,6 +2,7 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include "serial_tee.h"  // must be last: redefines Serial -> tee
 
 // Static member initialization
 String LichessAPI::apiToken = "";

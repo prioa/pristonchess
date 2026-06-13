@@ -484,6 +484,10 @@ private:
   void waitForAnimationQueue(uint32_t maxWaitMs = 5000);   // block until queue drains
   void blinkSquare(int row, int col, LedRGB color, int times = 3, bool clearAfter = true);
   void showConnectingAnimation();
+  // Boot/status feedback on the matrix: scroll a short message once (blocking,
+  // caller's thread) and a non-destructive green pulse when a device joins the AP.
+  void showBootMessage(const char* msg, LedRGB color, uint16_t stepMs = 110, uint8_t repeats = 3);
+  void pulseUserConnected();
   void flashBoardAnimation(LedRGB color, int times = 3);
   void fillUpAnimation(LedRGB color, int msPerLed = 50);
   void startupAnimation();   // graceful boot sequence — replaces fillUp at setup()

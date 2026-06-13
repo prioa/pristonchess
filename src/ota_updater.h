@@ -2,6 +2,7 @@
 #define OTA_UPDATER_H
 
 #include <Arduino.h>
+#include <FS.h>
 
 // Forward declarations
 class BoardDriver;
@@ -26,6 +27,16 @@ class OtaUpdater {
   bool applyWebAssetsFromUrl(const String& url);
 
   bool applyWebAssetsFromStream(Stream& stream, size_t contentLength);
+
+  // Incremental TAR extraction for the manual web-assets upload. Unlike the
+  // Stream variant (which buffers the whole tar to a temp file first — too big
+  // for the 320 KB LittleFS partition), this consumes the async upload chunks
+  // as they arrive and writes each entry straight to its final path, so only
+  // the extracted files occupy the FS. Call begin once, feed every chunk, then
+  // end.
+  void beginWebStream();
+  void feedWebStream(const uint8_t* data, size_t len);
+  bool endWebStream(int* filesOut = nullptr);
 
   static const char* getCurrentVersion();
 

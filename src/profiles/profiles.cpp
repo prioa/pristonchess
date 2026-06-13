@@ -1,5 +1,6 @@
 #include "profiles.h"
 #include <Preferences.h>
+#include "../serial_tee.h"  // must be last: redefines Serial -> tee
 
 // Persisting profiles + stats in NVS (Preferences) — NVS lives in its own
 // partition and survives both `upload` (firmware) and `uploadfs` (LittleFS)

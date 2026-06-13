@@ -1,6 +1,7 @@
 #include "sensor_test.h"
 #include "chess_utils.h"
 #include <Arduino.h>
+#include "serial_tee.h"  // must be last: redefines Serial -> tee
 
 SensorTest::SensorTest(BoardDriver* bd) : boardDriver(bd), complete(false) {
   memset(visited, false, sizeof(visited));
