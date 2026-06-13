@@ -891,6 +891,18 @@
                     <tr><td style="color:#888;padding:4px 8px;">Idle-Animation</td><td id="diag-anim" style="padding:4px 8px;">—</td></tr>
                     <tr><td style="color:#888;padding:4px 8px;">Lichess-Token</td><td id="diag-lichess" style="padding:4px 8px;">—</td></tr>
                 </table>
+
+                <!-- Live serial monitor: mirrors the ESP32 Serial output via
+                     GET /debug/log (8 KB ring buffer). Only polls while this
+                     section is expanded. -->
+                <div style="display:flex;gap:8px;align-items:center;margin:14px 0 6px;">
+                    <h4 style="margin:0;font-size:13px;">🖥️ Serial-Monitor</h4>
+                    <button type="button" id="diag-serial-pause" onclick="toggleDiagSerialPause()" style="font-size:11px;padding:2px 8px;">⏸ Pause</button>
+                    <button type="button" onclick="document.getElementById('diag-serial').textContent=''" style="font-size:11px;padding:2px 8px;">🗑 Leeren</button>
+                    <span id="diag-serial-status" style="font-size:11px;color:#555;margin-left:auto;"></span>
+                </div>
+                <pre id="diag-serial" style="background:#0a0a0a;border:1px solid #222;border-radius:6px;padding:8px;font-size:11px;line-height:1.35;color:#9f9;height:220px;overflow:auto;margin:0;white-space:pre-wrap;word-break:break-word;"></pre>
+                <p class="section-description" style="margin-top:4px;">Spiegelt die <code>Serial</code>-Ausgabe des Boards — Debuggen ohne USB-Kabel.</p>
             </div>
         </div>
 
@@ -2208,6 +2220,47 @@
                 const c = document.getElementById('diag-content');
                 if (c && c.classList.contains('expanded')) refreshDiag();
             }, 3000);
+        })();
+
+        // Live serial monitor inside the Diagnose section: poll /debug/log for
+        // the delta and append. Only runs while the section is expanded.
+        let _diagSerialSeq = 0, _diagSerialPaused = false, _diagSerialPrimed = false;
+        function toggleDiagSerialPause() {
+            _diagSerialPaused = !_diagSerialPaused;
+            document.getElementById('diag-serial-pause').textContent = _diagSerialPaused ? '▶︎ Weiter' : '⏸ Pause';
+        }
+        (function () {
+            const mon = () => document.getElementById('diag-serial');
+            async function pollSerial() {
+                const c = document.getElementById('diag-content');
+                const el = mon();
+                if (el && c && c.classList.contains('expanded') && !_diagSerialPaused) {
+                    try {
+                        const ac = new AbortController();
+                        const tid = setTimeout(() => ac.abort(), 2500);
+                        const r = await fetch('/debug/log?after=' + _diagSerialSeq, { signal: ac.signal });
+                        clearTimeout(tid);
+                        const j = await r.json();
+                        if (j.seq < _diagSerialSeq) { el.textContent = ''; _diagSerialPrimed = false; } // reboot
+                        _diagSerialSeq = j.seq;
+                        if (!_diagSerialPrimed) {
+                            _diagSerialPrimed = true; // skip backlog, go live from here
+                        } else if (j.data && j.data.length) {
+                            const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 20;
+                            el.textContent += j.data;
+                            if (el.textContent.length > 40000) el.textContent = el.textContent.slice(-32000);
+                            if (atBottom) el.scrollTop = el.scrollHeight;
+                        }
+                        const st = document.getElementById('diag-serial-status');
+                        if (st) st.textContent = 'verbunden · seq ' + j.seq;
+                    } catch (e) {
+                        const st = document.getElementById('diag-serial-status');
+                        if (st) st.textContent = '⚠️ keine Verbindung';
+                    }
+                }
+                setTimeout(pollSerial, 1500);
+            }
+            pollSerial();
         })();
     </script>
 </body>
