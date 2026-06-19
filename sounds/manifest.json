@@ -1,0 +1,13 @@
+{
+  "_readme": "Curated sound library for PristonChess, served via jsDelivr CDN (base below). NOT bundled into the ESP32 firmware. The web app syncs these into the browser (IndexedDB) on first online load. Layout: sounds/<piece>/<piece>_<event>_<n>.<ext>. piece folders: pawn knight bishop rook queen king. events: pickup place (capture defaults to the built-in sword sound). To add: drop a short clip into the piece folder and add an entry below, then commit/push. jsDelivr caches @main for a few hours, so new clips appear after the TTL. rid = unique stable id (change it when you replace a file's contents so clients re-download). cat = pickup|place|capture, piece = P|N|B|R|Q|K.",
+  "version": 1,
+  "base": "https://cdn.jsdelivr.net/gh/prioa/pristonchess@main/sounds/",
+  "clips": [
+    { "rid": "knight_pickup_1", "cat": "pickup", "piece": "N", "file": "knight/knight_pickup_1.mp3", "name": "Springer Aufheben 1" },
+    { "rid": "knight_pickup_2", "cat": "pickup", "piece": "N", "file": "knight/knight_pickup_2.mp3", "name": "Springer Aufheben 2" },
+    { "rid": "knight_pickup_3", "cat": "pickup", "piece": "N", "file": "knight/knight_pickup_3.mp3", "name": "Springer Aufheben 3" },
+    { "rid": "knight_place_1", "cat": "place", "piece": "N", "file": "knight/knight_place_1.mp3", "name": "Springer Platzieren 1" },
+    { "rid": "knight_place_2", "cat": "place", "piece": "N", "file": "knight/knight_place_2.mp3", "name": "Springer Platzieren 2" },
+    { "rid": "knight_place_3", "cat": "place", "piece": "N", "file": "knight/knight_place_3.mp3", "name": "Springer Platzieren 3" }
+  ]
+}

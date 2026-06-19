@@ -22,3 +22,6 @@ Bildschirmfoto*.png
 # OTA-Release-Artefakte (werden an GitHub-Releases gehängt, nicht getrackt)
 firmware.bin
 web_assets.tar
+
+# macOS
+.DS_Store
