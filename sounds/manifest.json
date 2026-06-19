@@ -1,13 +1,29 @@
 {
-  "_readme": "Curated sound library for PristonChess, served via jsDelivr CDN (base below). NOT bundled into the ESP32 firmware. The web app syncs these into the browser (IndexedDB) on first online load. Layout: sounds/<piece>/<piece>_<event>_<n>.<ext>. piece folders: pawn knight bishop rook queen king. events: pickup place (capture defaults to the built-in sword sound). To add: drop a short clip into the piece folder and add an entry below, then commit/push. jsDelivr caches @main for a few hours, so new clips appear after the TTL. rid = unique stable id (change it when you replace a file's contents so clients re-download). cat = pickup|place|capture, piece = P|N|B|R|Q|K.",
-  "version": 1,
+  "_readme": "Curated sound library for PristonChess, served via jsDelivr CDN (base below). NOT bundled into the ESP32 firmware. The web app syncs these into the browser (IndexedDB) on first online load. Layout: sounds/<piece>/<piece>_<event>_<n>.<ext>; default/<event>_<n>.<ext> for the shared fallback set. piece folders: pawn knight bishop rook queen king. events: pickup place (capture defaults to kill_* in default/, else the built-in sword). piece '*' = default set used by any figure without its own clips. cat 'win' plays once on a decisive game end. To add: drop a clip + add an entry below, then commit/push. jsDelivr caches @main for a few hours. rid = unique stable id (change it when replacing a file's contents). cat = pickup|place|capture|win, piece = P|N|B|R|Q|K|*.",
+  "version": 2,
   "base": "https://cdn.jsdelivr.net/gh/prioa/pristonchess@main/sounds/",
   "clips": [
+    { "rid": "def_pickup_1", "cat": "pickup",  "piece": "*", "file": "default/pickup_1.mp3", "name": "Standard Aufheben 1" },
+    { "rid": "def_pickup_2", "cat": "pickup",  "piece": "*", "file": "default/pickup_2.mp3", "name": "Standard Aufheben 2" },
+    { "rid": "def_place_1",  "cat": "place",   "piece": "*", "file": "default/place_1.mp3",  "name": "Standard Platzieren 1" },
+    { "rid": "def_place_2",  "cat": "place",   "piece": "*", "file": "default/place_2.mp3",  "name": "Standard Platzieren 2" },
+    { "rid": "def_place_3",  "cat": "place",   "piece": "*", "file": "default/place_3.mp3",  "name": "Standard Platzieren 3" },
+    { "rid": "def_kill_1",   "cat": "capture", "piece": "*", "file": "default/kill_1.mp3",   "name": "Standard Schlagen 1" },
+    { "rid": "def_kill_2",   "cat": "capture", "piece": "*", "file": "default/kill_2.mp3",   "name": "Standard Schlagen 2" },
+    { "rid": "def_kill_3",   "cat": "capture", "piece": "*", "file": "default/kill_3.mp3",   "name": "Standard Schlagen 3" },
+    { "rid": "def_kill_4",   "cat": "capture", "piece": "*", "file": "default/kill_4.mp3",   "name": "Standard Schlagen 4" },
+    { "rid": "def_win_1",    "cat": "win",     "piece": "*", "file": "default/win_1.mp3",    "name": "Sieg 1" },
+    { "rid": "def_win_2",    "cat": "win",     "piece": "*", "file": "default/win_2.mp3",    "name": "Sieg 2" },
+
     { "rid": "knight_pickup_1", "cat": "pickup", "piece": "N", "file": "knight/knight_pickup_1.mp3", "name": "Springer Aufheben 1" },
     { "rid": "knight_pickup_2", "cat": "pickup", "piece": "N", "file": "knight/knight_pickup_2.mp3", "name": "Springer Aufheben 2" },
     { "rid": "knight_pickup_3", "cat": "pickup", "piece": "N", "file": "knight/knight_pickup_3.mp3", "name": "Springer Aufheben 3" },
     { "rid": "knight_place_1", "cat": "place", "piece": "N", "file": "knight/knight_place_1.mp3", "name": "Springer Platzieren 1" },
     { "rid": "knight_place_2", "cat": "place", "piece": "N", "file": "knight/knight_place_2.mp3", "name": "Springer Platzieren 2" },
-    { "rid": "knight_place_3", "cat": "place", "piece": "N", "file": "knight/knight_place_3.mp3", "name": "Springer Platzieren 3" }
+    { "rid": "knight_place_3", "cat": "place", "piece": "N", "file": "knight/knight_place_3.mp3", "name": "Springer Platzieren 3" },
+
+    { "rid": "rook_pickup_1", "cat": "pickup", "piece": "R", "file": "rook/rook_pickup_1.mp3", "name": "Turm Aufheben 1" },
+    { "rid": "rook_place_1", "cat": "place", "piece": "R", "file": "rook/rook_place_1.mp3", "name": "Turm Platzieren 1" },
+    { "rid": "rook_place_2", "cat": "place", "piece": "R", "file": "rook/rook_place_2.mp3", "name": "Turm Platzieren 2" }
   ]
 }
