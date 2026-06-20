@@ -53,12 +53,17 @@ void ChessBot::update() {
       applyMove(fromRow, fromCol, toRow, toCol);
       updateGameStatus();
       wifiManager->updateBoardState(ChessUtils::boardToFEN(board, currentTurn, chessEngine), currentEvaluation);
+      if (!gameOver) { boardDriver->waitForAnimationQueue(); renderBoardLEDs(); }
+    } else if (!gameOver) {
+      // Keep the occupied squares glowing between moves (same as HvH).
+      renderRestingFrame();   // smooth the shiny glint between moves
     }
   } else {
     // Bot's turn
     makeBotMove();
     updateGameStatus();
     wifiManager->updateBoardState(ChessUtils::boardToFEN(board, currentTurn, chessEngine), currentEvaluation);
+    if (!gameOver) { boardDriver->waitForAnimationQueue(); renderBoardLEDs(); }
   }
 
   boardDriver->updateSensorPrev();
@@ -190,6 +195,14 @@ void ChessBot::waitForRemoteMoveCompletion(int fromRow, int fromCol, int toRow, 
   Serial.println("Waiting for you to complete the remote move...");
 
   while (!moveCompleted) {
+    // Escape hatch: let a web resign/abort end the game instead of blocking here
+    // forever waiting for the bot's piece to be physically moved (dead sensors).
+    if (wifiManager->isEndRequested()) {
+      Serial.println("End requested from web — aborting remote-move wait");
+      boardDriver->clearAllLEDs();
+      boardDriver->releaseLEDs();
+      return;
+    }
     boardDriver->readSensors();
 
     // For capture moves, ensure captured piece is removed first

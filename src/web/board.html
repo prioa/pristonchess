@@ -787,6 +787,7 @@
     <script>var exports = {};</script>
     <script src="./scripts/chess.js"></script>
     <script src="./scripts/app.js"></script>
+    <script src="./scripts/custom-sounds.js"></script>
 </head>
 
 <body>
@@ -914,6 +915,21 @@
         <div class="status-half top"    id="status-top"></div>
         <div class="status-divider"></div>
         <div class="status-half bottom" id="status-bottom"></div>
+    </div>
+
+    <!-- Post-game actions (shown over the game-over overlay; Revanche only for HvH). -->
+    <div id="gameOverActions" style="display:none;position:fixed;left:0;right:0;bottom:24px;z-index:260;
+         display:none;justify-content:center;gap:12px;padding:0 16px;pointer-events:none;">
+        <button type="button" id="rematchBtn" onclick="doRematch()"
+                style="pointer-events:auto;padding:14px 22px;border-radius:10px;border:none;
+                       background:#4D8CFF;color:#fff;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,0.4);">
+            ↺ Revanche (Seiten getauscht)
+        </button>
+        <button type="button" onclick="window.location.href='./index.html'"
+                style="pointer-events:auto;padding:14px 22px;border-radius:10px;border:1px solid rgba(255,255,255,0.3);
+                       background:rgba(20,24,34,0.9);color:#fff;font-size:16px;font-weight:600;cursor:pointer;">
+            ⌂ Home
+        </button>
     </div>
 
     <!-- ================================================================
@@ -1470,7 +1486,238 @@
             </style>`);
         }
 
-        function playMoveSound(isCapture) { }
+        // Synthesized capture sound (no audio asset → keeps the tight LittleFS free).
+        // A short low "thud" + a noise "clack" transient, generated via Web Audio.
+        let _audioCtx = null;
+        function _getAudioCtx() {
+            if (_audioCtx === null) {
+                try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+                catch (e) { _audioCtx = false; }
+            }
+            if (_audioCtx && _audioCtx.state === 'suspended') _audioCtx.resume();
+            return _audioCtx || null;
+        }
+        // Realistic capture sound = a real audio file (sword clash). Played via an
+        // HTMLAudioElement (media channel) so it works on iOS even with the ringer
+        // switch on. Falls back to the synth thud if the file can't load/play.
+        let _swordAudio = null;
+        function _getSword() {
+            if (_swordAudio === null) {
+                try { _swordAudio = new Audio('./sounds/sword.m4a'); _swordAudio.preload = 'auto'; }
+                catch (e) { _swordAudio = false; }
+            }
+            return _swordAudio || null;
+        }
+        function playCaptureFile() {
+            const a = _getSword();
+            if (!a) { playCaptureSound(); return; }
+            try { a.currentTime = 0; const p = a.play(); if (p && p.catch) p.catch(() => playCaptureSound()); }
+            catch (e) { playCaptureSound(); }
+        }
+        // Browser autoplay policy keeps the context suspended until a user gesture.
+        // Sounds fire on server pushes (no gesture), so we unlock on interaction.
+        // iOS Safari is stricter: resume() alone isn't enough — an actual buffer
+        // must START inside the gesture. We also keep the listeners attached (not
+        // one-shot) because iOS re-suspends the context when the tab backgrounds,
+        // so every tap re-arms audio.
+        (function () {
+            function _unlock() {
+                const ctx = _getAudioCtx();
+                if (!ctx) return;
+                try {
+                    const b = ctx.createBuffer(1, 1, 22050);
+                    const s = ctx.createBufferSource();
+                    s.buffer = b;
+                    s.connect(ctx.destination);
+                    s.start(0);
+                } catch (e) { }
+                if (ctx.state === 'suspended') ctx.resume();
+                // Prime the sword audio element so later (gesture-less) captures can play it.
+                const sw = _getSword();
+                if (sw && !sw._primed) {
+                    sw._primed = true;
+                    try { sw.play().then(() => { sw.pause(); sw.currentTime = 0; }).catch(() => {}); } catch (e) { }
+                }
+                // Prime the custom-sound audio pool (same iOS gesture requirement).
+                if (window.CustomSounds && CustomSounds.unlock) { try { CustomSounds.unlock(); } catch (e) {} }
+            }
+            ['pointerdown', 'touchstart', 'touchend', 'mousedown', 'keydown', 'click'].forEach(
+                e => document.addEventListener(e, _unlock, { passive: true }));
+        })();
+
+        // --- Sound building blocks (all synthesized, no audio assets) ---
+        // Safari garbage-collects audio nodes as soon as the function returns, so
+        // the sound never reaches the speakers ("ctx running, no tone"). Hold a
+        // reference until the node fires 'ended'.
+        const _sndLive = new Set();
+        function _keep(node) { _sndLive.add(node); node.addEventListener('ended', () => _sndLive.delete(node)); }
+        function _beep(opts) {
+            const ctx = _getAudioCtx();
+            if (!ctx) return;
+            const now = ctx.currentTime + (opts.delay || 0);
+            const osc = ctx.createOscillator();
+            const g = ctx.createGain();
+            osc.type = opts.type || 'triangle';
+            osc.frequency.setValueAtTime(opts.f0, now);
+            if (opts.f1) osc.frequency.exponentialRampToValueAtTime(opts.f1, now + opts.dur);
+            g.gain.setValueAtTime(opts.gain, now);                       // start audible (no up-ramp)
+            g.gain.exponentialRampToValueAtTime(0.0001, now + opts.dur); // decay
+            osc.connect(g); g.connect(ctx.destination);                 // split chain (Safari)
+            osc.start(now);
+            osc.stop(now + opts.dur + 0.03);
+            _keep(osc);
+        }
+        function _clack(gain, dur) {
+            const ctx = _getAudioCtx();
+            if (!ctx) return;
+            const now = ctx.currentTime;
+            const n = Math.max(1, (ctx.sampleRate * dur) | 0);
+            const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+            const ch = buf.getChannelData(0);
+            for (let i = 0; i < n; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / n);
+            const src = ctx.createBufferSource();
+            src.buffer = buf;
+            const g = ctx.createGain();
+            g.gain.setValueAtTime(gain, now);
+            g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+            src.connect(g); g.connect(ctx.destination);
+            src.start(now);
+            _keep(src);
+        }
+        // Filtered noise burst (crumble / shatter textures).
+        function _noiseBurst(opts) {
+            const ctx = _getAudioCtx(); if (!ctx) return;
+            const now = ctx.currentTime + (opts.delay || 0);
+            const n = Math.max(1, (ctx.sampleRate * opts.dur) | 0);
+            const buf = ctx.createBuffer(1, n, ctx.sampleRate), ch = buf.getChannelData(0);
+            for (let i = 0; i < n; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / n);
+            const src = ctx.createBufferSource(); src.buffer = buf;
+            const g = ctx.createGain();
+            g.gain.setValueAtTime(opts.gain, now);
+            g.gain.exponentialRampToValueAtTime(0.0001, now + opts.dur);
+            let node = src;
+            if (opts.lp) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = opts.lp; src.connect(f); node = f; }
+            node.connect(g); g.connect(ctx.destination);
+            src.start(now); _keep(src);
+        }
+        // Distinct cues: capture = heavy thud+clack, place = soft tock,
+        // pickup = short high tick, error (wrong turn) = low double buzz.
+        function playCaptureSound() { _beep({ type: 'triangle', f0: 230, f1: 85, dur: 0.18, gain: 0.32 }); _clack(0.22, 0.045); }
+        function playPlaceSound()   { _beep({ type: 'triangle', f0: 300, f1: 170, dur: 0.09, gain: 0.22 }); _clack(0.10, 0.02); }
+        function playPickupSound()  { _beep({ type: 'sine', f0: 520, f1: 770, dur: 0.06, gain: 0.16 }); }
+        function playErrorSound()   { _beep({ type: 'square', f0: 165, f1: 120, dur: 0.11, gain: 0.15 }); _beep({ type: 'square', f0: 150, f1: 110, dur: 0.11, gain: 0.15, delay: 0.15 }); }
+
+        // --- Piece-specific capture sounds (synthesized, stylized) ---
+        function playRookCrumble() {   // Turm → Steine bröckeln: Rumpeln + Geröll
+            _beep({ type: 'triangle', f0: 150, f1: 50, dur: 0.2, gain: 0.3 });
+            for (let i = 0; i < 9; i++) _noiseBurst({ gain: 0.10 + Math.random() * 0.12, dur: 0.04 + Math.random() * 0.05, lp: 1000 + Math.random() * 2500, delay: 0.04 + Math.random() * 0.5 });
+        }
+        function playKnightNeigh() {   // Springer → Wiehern (stilisiert): warbelnder Sweep
+            const ctx = _getAudioCtx(); if (!ctx) return;
+            const now = ctx.currentTime;
+            const osc = ctx.createOscillator(); osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(520, now);
+            osc.frequency.exponentialRampToValueAtTime(175, now + 0.55);
+            const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1100; bp.Q.value = 4;
+            const g = ctx.createGain();
+            g.gain.setValueAtTime(0.0001, now);
+            g.gain.exponentialRampToValueAtTime(0.28, now + 0.05);
+            g.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+            const lfo = ctx.createOscillator(); lfo.type = 'sine';
+            lfo.frequency.setValueAtTime(7, now); lfo.frequency.exponentialRampToValueAtTime(26, now + 0.5);
+            const lfoG = ctx.createGain(); lfoG.gain.value = 0.16;
+            lfo.connect(lfoG); lfoG.connect(g.gain);
+            osc.connect(bp); bp.connect(g); g.connect(ctx.destination);
+            osc.start(now); osc.stop(now + 0.62);
+            lfo.start(now); lfo.stop(now + 0.62);
+            _keep(osc); _keep(lfo);
+        }
+        function playBishopChime() {   // Läufer → Glockenton (inharmonische Partialtöne)
+            _beep({ type: 'sine', f0: 880, dur: 0.5, gain: 0.18 });
+            _beep({ type: 'sine', f0: 2112, dur: 0.45, gain: 0.07 });
+            _beep({ type: 'sine', f0: 2728, dur: 0.35, gain: 0.045 });
+        }
+        function playQueenShatter() {  // Dame → Splittern: heller Sweep + Glassscherben
+            _beep({ type: 'sawtooth', f0: 1200, f1: 300, dur: 0.22, gain: 0.16 });
+            _beep({ type: 'triangle', f0: 170, f1: 80, dur: 0.2, gain: 0.2 });
+            for (let i = 0; i < 7; i++) _noiseBurst({ gain: 0.07 + Math.random() * 0.08, dur: 0.03 + Math.random() * 0.04, lp: 3000 + Math.random() * 4000, delay: 0.02 + Math.random() * 0.32 });
+        }
+        function playKingGong() {      // König → Gong (im Normalspiel nie geschlagen)
+            _beep({ type: 'sine', f0: 120, dur: 0.8, gain: 0.3 });
+            _beep({ type: 'sine', f0: 181, dur: 0.8, gain: 0.14 });
+            _noiseBurst({ gain: 0.16, dur: 0.3, lp: 800 });
+        }
+        function pieceCaptureSound(letter) {
+            switch ((letter || '').toUpperCase()) {
+                case 'R': playRookCrumble(); break;
+                case 'N': playKnightNeigh(); break;
+                case 'B': playBishopChime(); break;
+                case 'Q': playQueenShatter(); break;
+                case 'K': playKingGong(); break;
+                default:  playCaptureSound(); break;   // Bauer / unbekannt → Standard-Thud
+            }
+        }
+
+        // FEN-derived move sound: capture vs plain placement.
+        function playMoveSound(isCapture) {
+            if (!settings.playSound) return;
+            if (isCapture) playCaptureSound(); else playPlaceSound();
+        }
+        // Which piece type vanished between two positions (the captured one): 'P','N',…
+        function capturedPieceType(oldPos, newPos) {
+            const cnt = p => { const m = {}; for (const k in (p || {})) { const t = p[k]; m[t] = (m[t] || 0) + 1; } return m; };
+            const a = cnt(oldPos), b = cnt(newPos);
+            for (const t in a) if ((b[t] || 0) < a[t]) return t[1]; // 'wR' -> 'R'
+            return null;
+        }
+        // Which piece type just moved (landed on a square that changed): 'P','N',…
+        // The mover is the piece now occupying a square that was empty or held a
+        // different piece before. Falls back to the first new occupant.
+        function movedPieceType(oldPos, newPos) {
+            for (const sq in (newPos || {})) {
+                if (!oldPos || oldPos[sq] !== newPos[sq]) return newPos[sq][1];
+            }
+            return null;
+        }
+        // Central custom-sound router: play a random user/CDN clip for
+        // (category, pieceType); if none (feature off / no clip / no module),
+        // run the built-in fallback. Shared by every mode via playMoveSoundDiff
+        // and playSoundEvent — never wire sounds per game mode.
+        function _customOr(cat, piece, fallback) {
+            if (window.CustomSounds && piece) {
+                try { CustomSounds.setAudioContext(_getAudioCtx()); } catch (e) {}
+                CustomSounds.playRandom(cat, piece).then(function (ok) {
+                    // No custom clip → fade out any lingering custom sound (so the
+                    // built-in fallback still "interrupts" the previous one softly).
+                    if (!ok) { try { CustomSounds.fadeOutCurrent(); } catch (e) {} fallback(); }
+                }).catch(function () { fallback(); });
+            } else { fallback(); }
+        }
+        // Diff-based capture sound (sword) vs. plain place sound. A capture
+        // removes a piece, so the TOTAL piece count drops. The old per-type
+        // check (capturedPieceType) fired a false "sword" whenever any single
+        // piece-type count dipped — e.g. a promotion, or a transient board
+        // re-render where one type momentarily mismatched — even on a plain
+        // move. Total-count is robust: a simple move keeps the count constant,
+        // so it can never be mistaken for a capture.
+        function playMoveSoundDiff(oldPos, newPos) {
+            if (!settings.playSound) return;
+            if (detectCapture(oldPos, newPos)) {
+                const cap = capturedPieceType(oldPos, newPos);
+                _customOr('capture', cap, playCaptureFile);
+            } else {
+                const mv = movedPieceType(oldPos, newPos);
+                _customOr('place', mv, playPlaceSound);
+            }
+        }
+        // Physical-only events pushed by the firmware via board-update
+        // {sndEvent, sndSeq, sndPiece}. piece carries the lifted piece type so a
+        // per-figure pickup sound can play.
+        function playSoundEvent(ev, piece) {
+            if (!settings.playSound) return;
+            if (ev === 'P') _customOr('pickup', (piece || '').toUpperCase(), playPickupSound);
+            else if (ev === 'W') _customOr('error', '*', playErrorSound);
+        }
 
         function detectCapture(oldPos, newPos) {
             return Object.keys(newPos || {}).length < Object.keys(oldPos || {}).length;
@@ -1955,7 +2202,7 @@
                 $('#edit-instructions').removeClass('visible');
                 saveSettings();
             }
-            playMoveSound(detectCapture(oldPos, newPos));
+            playMoveSoundDiff(oldPos, newPos);
             enPassantSquare = '-';
             const files = 'abcdefgh';
             for (let f = 0; f < 8; f++) {
@@ -1998,7 +2245,7 @@
             if (positionFen !== previousValidFen) board.position(positionFen, true);
             const newPosition = board.position();
             if (playSound && oldPosition && previousValidFen !== positionFen) {
-                playMoveSound(detectCapture(oldPosition, newPosition));
+                playMoveSoundDiff(oldPosition, newPosition);
             }
             previousValidFen = positionFen;
             if (parts.length >= 2) { currentTurn = parts[1] === 'b' ? 'b' : 'w'; updateTurnButtons(); }
@@ -2152,12 +2399,20 @@
         // ==========================================
 
         // Process one board-update payload (from SSE push or a polling fetch).
+        var _lastSndSeq;  // last firmware sound-event sequence the client has played
         function applyBoardData(data) {
             // Manual simulation drives the board locally — enter on the server's
             // signal and ignore server position pushes while it's active.
             if (data.mode === 5 && data.simManual) { if (!manualSim) enterManualMode(); return; }
             if (manualSim) exitManualMode();
             if (editMode || reviewMode) return;
+            // Physical-only sound events (piece lifted / wrong-turn pickup) pushed
+            // by the firmware. Play each new sequence once; prime silently on the
+            // first poll so a stale event isn't replayed on page load.
+            if (data.sndSeq !== undefined) {
+                if (_lastSndSeq === undefined) _lastSndSeq = data.sndSeq;
+                else if (data.sndSeq !== _lastSndSeq) { _lastSndSeq = data.sndSeq; playSoundEvent(data.sndEvent, data.sndPiece); }
+            }
             if (data.fen) {
                 if (liveSegments.length > 0) {
                     const lastSeg = liveSegments[liveSegments.length - 1];
@@ -2335,6 +2590,40 @@
             // Try the event stream; fall back to polling if no events arrive in 3 s.
             startSSE();
             setTimeout(function () { if (!_sseGotEvent) startPollingFallback(); }, 3000);
+            _syncCustomSounds();
+        }
+
+        // Brief, self-dismissing status note (bottom-center) so the otherwise
+        // invisible sound sync is observable — we can SEE if clips loaded.
+        function _soundToast(msg, ok) {
+            let t = document.getElementById('_soundToast');
+            if (!t) {
+                t = document.createElement('div');
+                t.id = '_soundToast';
+                t.style.cssText = 'position:fixed;left:50%;bottom:70px;transform:translateX(-50%);' +
+                    'z-index:400;font:600 13px system-ui,sans-serif;padding:8px 14px;border-radius:10px;' +
+                    'color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.45);pointer-events:none;max-width:88vw;text-align:center;';
+                document.body.appendChild(t);
+            }
+            t.style.background = ok ? 'rgba(33,140,80,.95)' : 'rgba(192,57,43,.96)';
+            t.textContent = msg;
+            t.style.opacity = '1';
+            clearTimeout(t._h);
+            t._h = setTimeout(function () { t.style.transition = 'opacity .6s'; t.style.opacity = '0'; }, 4200);
+        }
+
+        // Load the curated sound manifest (lightweight JSON). Curated clips then
+        // play DIRECTLY from the CDN — no fragile IndexedDB sync in the playback
+        // path. Local uploads (sounds.html) still use IndexedDB. Result is shown
+        // so a failed load is visible instead of silently falling back to synth.
+        let _soundsSynced = false;
+        function _syncCustomSounds() {
+            if (_soundsSynced || !window.CustomSounds) return;
+            _soundsSynced = true;
+            if (!CustomSounds.isEnabled()) return;
+            CustomSounds.loadManifest()
+                .then(function (r) { _soundToast('🔊 Sounds bereit · ' + r.total + ' im Set', true); })
+                .catch(function (e) { _soundToast('⚠ Sound-Laden fehlgeschlagen: ' + (e && e.message ? e.message : e), false); });
         }
 
         // ==========================================
@@ -2346,7 +2635,9 @@
         let _status = null;
         let _clockTick = null;
         let _checkDismissTimeout = null;
+        let _gameOverRedirectT = null;
         let _checkSoundPlayed = false;
+        let _winSoundPlayed = false;
         let _confirmType  = null;
         let _confirmColor = null; // 'w' or 'b' for resign
 
@@ -2426,6 +2717,18 @@
             'T': '⏱ Zeit abgelaufen',
             'M': 'Spiel beendet',
         };
+
+        function doRematch() {
+            const btn = document.getElementById('rematchBtn');
+            if (btn) { btn.disabled = true; btn.textContent = '↺ Starte Revanche…'; }
+            fetch('./rematch', { method: 'POST' })
+                .then(function (r) {
+                    // The board starts a fresh HvH game (sides swapped) right away;
+                    // reload the board view to watch it.
+                    window.location.href = r.ok ? './board.html' : './index.html';
+                })
+                .catch(function () { window.location.href = './index.html'; });
+        }
 
         function _showStatusOverlay(cssClass, text) {
             const ov = document.getElementById('status-overlay');
@@ -2569,6 +2872,12 @@
                 }
             });
 
+            // End-game / abort action (toolbar): reliably shown for EVERY running
+            // game here on the 500ms poll — the slower 4s banner poll alone left it
+            // missing (e.g. in Mensch-vs-Mensch). Don't fight edit/review mode.
+            const _gaPanel = document.getElementById('gameActionsPanel');
+            if (_gaPanel && !editMode && !reviewMode) _gaPanel.style.display = noGame ? 'none' : '';
+
             // Wake lock: hold while game is running, release otherwise
             if (!noGame && !data.gameOver) {
                 if (!_wakeLockGameRunning) { _wakeLockGameRunning = true; _requestWakeLock(); }
@@ -2597,7 +2906,35 @@
                 const winner = data.winner === 'w' ? ' — Weiss gewinnt'
                              : data.winner === 'b' ? ' — Schwarz gewinnt' : '';
                 _showStatusOverlay('gameover', label + winner);
+                // Win sound — once, on the game-over edge, for a decisive result
+                // (not a draw). Central → fires in every mode. No piece, so it
+                // uses the shared 'win' set ('*'); no built-in fallback.
+                if (!_winSoundPlayed && settings.playSound &&
+                    (data.winner === 'w' || data.winner === 'b')) {
+                    _winSoundPlayed = true;
+                    if (window.CustomSounds) {
+                        try { CustomSounds.setAudioContext(_getAudioCtx()); } catch (e) {}
+                        CustomSounds.playRandom('win', '*');
+                    }
+                }
+                // Post-game actions. For Human-vs-Human (mode 1) offer a Revanche
+                // (rematch, sides swapped) + Home, and DON'T auto-redirect so the
+                // players can choose. Other modes auto-return home after a few s.
+                const _isHvH = (data.mode === 1);
+                const _goActions = document.getElementById('gameOverActions');
+                if (_goActions) {
+                    const _rb = document.getElementById('rematchBtn');
+                    if (_rb) _rb.style.display = _isHvH ? '' : 'none';
+                    _goActions.style.display = 'flex';
+                }
+                if (!_isHvH && !_gameOverRedirectT) {
+                    _gameOverRedirectT = setTimeout(function () { window.location.href = './index.html'; }, 6000);
+                }
             } else if (!_confirmType) {
+                // A new game started (no longer game-over) → cancel redirect + hide actions.
+                if (_gameOverRedirectT) { clearTimeout(_gameOverRedirectT); _gameOverRedirectT = null; }
+                const _goActions = document.getElementById('gameOverActions');
+                if (_goActions) _goActions.style.display = 'none';
                 // Only update overlay when no confirm dialog is pending
                 if (data.inCheck) {
                     _showStatusOverlay('check', '♚ SCHACH!');
@@ -2607,6 +2944,7 @@
                 } else {
                     if (_checkDismissTimeout) { clearTimeout(_checkDismissTimeout); _checkDismissTimeout = null; }
                     _checkSoundPlayed = false;
+                    _winSoundPlayed = false;
                     _hideStatusOverlay();
                 }
             }
@@ -2705,10 +3043,11 @@
                 pieceTheme: pieceTheme,
                 showNotation: settings.showNotation,
                 orientation: boardOrientation,
-                onMouseoverSquare: function (sq, piece) { manualHoverIn(sq, piece); },
             });
             applyBoardColors();
-            // Hover (desktop) previews a piece's moves; click/tap places.
+            // Click/tap a piece = "pickup": selects it, shows its reachable
+            // squares (web + LEDs) and plays the pickup sound. A second click on
+            // a target places. (Hover does NOT select — pickup is click-driven.)
             $('#board').off('click.manual').on('click.manual', '.square-55d63', function () {
                 const sq = manualSquareOf(this);
                 if (sq) manualSquareClick(sq);
@@ -2743,6 +3082,13 @@
             manualInvalid = null;
             clearManualHighlights();
             sqEl(sq).addClass('pc-hl-src');
+            // Pickup sound — selecting a piece IS the manual-sim pickup. Routed
+            // through the same per-figure custom-sound path as a physical lift.
+            if (settings.playSound) {
+                const _sp = board.position();
+                const _pp = _sp && _sp[sq] ? _sp[sq][1] : null;
+                _customOr('pickup', _pp, playPickupSound);
+            }
             const targets = manualTargetsOf(sq);
             const sc = sq.charCodeAt(0) - 97;            // a..h → 0..7
             const sr = parseInt(sq.charAt(1), 10) - 1;   // 1..8 → 0..7
@@ -2762,15 +3108,6 @@
             postHighlight(sq, targets);
         }
 
-        // Hover preview: the cursor over a piece shows its moves at once.
-        function manualHoverIn(sq, piece) {
-            if (!manualSim) return;
-            // Keep the current selection when hovering one of its targets so you
-            // can click the destination (incl. captures) to move there.
-            if (manualSelected && manualTargetsOf(manualSelected).indexOf(sq) >= 0) return;
-            if (piece) manualSelect(sq);
-        }
-
         function manualSquareClick(sq) {
             const pos = board.position();
             if (manualSelected && sq !== manualSelected) {
@@ -2783,23 +3120,31 @@
                         flagInvalid(sq); return;                     // unreachable → red blink
                     }
                     currentTurn = manualEngine.turn();
-                    commitManualMove(manualEngine.fen(), sq, !!mv.captured);
+                    commitManualMove(manualEngine.fen(), sq, mv.captured || null);
                 } else {
                     const np = Object.assign({}, pos);
                     np[sq] = np[manualSelected]; delete np[manualSelected];
                     const fen = Chessboard.objToFen(np) + ' w - - 0 1';
                     try { manualEngine = new Chess(fen); } catch (e) { manualEngine = null; }
-                    commitManualMove(fen, sq, false);
+                    commitManualMove(fen, sq, null);
                 }
                 return;
             }
             if (pos[sq]) manualSelect(sq);                  // (re)select the piece under the click
         }
 
-        function commitManualMove(fen, targetSq, capture) {
+        function commitManualMove(fen, targetSq, capturedLetter) {
             board.position(fen.split(' ')[0], true);
             postManualFen(fen);
-            playMoveSound(capture);
+            if (settings.playSound) {
+                if (capturedLetter) {
+                    _customOr('capture', (capturedLetter || '').toUpperCase(), playCaptureFile);
+                } else {
+                    const _pos = board.position();
+                    const _mp = _pos && _pos[targetSq] ? _pos[targetSq][1] : null;
+                    _customOr('place', _mp, playPlaceSound);
+                }
+            }
             manualSelected = null; manualInvalid = null;
             clearManualHighlights();
             const el = sqEl(targetSq).addClass('pc-blink-green');
@@ -2810,6 +3155,9 @@
             if (manualInvalid) sqEl(manualInvalid).removeClass('pc-blink-red');
             manualInvalid = sq;
             sqEl(sq).addClass('pc-blink-red');   // stays until a valid placement
+            // Clicking an illegal (red) target = wrong move → error sound, same
+            // central path as a physical wrong-turn pickup.
+            if (settings.playSound) _customOr('error', '*', playErrorSound);
         }
 
         function clearManualHighlights() {

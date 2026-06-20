@@ -122,7 +122,8 @@ enum class AnimationType : uint8_t {
   CHECKMATE_SPIRAL,
   CHECKMATE_ANIM,
   MODE_CHANGE_TV,
-  CELL_PULSE
+  CELL_PULSE,
+  HEARTBEAT
 };
 
 // Animation job with parameters union for queue
@@ -152,6 +153,8 @@ struct AnimationJob {
     struct {
       int fromRow, fromCol, toRow, toCol;
       char player;
+      LedRGB color;       // explicit trail colour (used when useColor is true)
+      bool useColor;      // true → use `color`; false → effectivePathColor(player)
     } path;
   } params;
 };
@@ -233,6 +236,7 @@ class BoardDriver {
   void doCheckmateSpiral();
   void doCheckmateAnimation();
   void doCellPulse(int row, int col, LedRGB color);
+  void doHeartbeat(int row, int col, LedRGB peak);
   // Stored params for the queued doCheckmateAnimation() job.
   char cmBoardState[8][8];
   char cmWinner;
@@ -320,6 +324,10 @@ private:
   uint8_t toLogicalRow[NUM_ROWS];
   uint8_t toLogicalCol[NUM_COLS];
   uint8_t ledIndexMap[NUM_ROWS][NUM_COLS];
+  // LED-map recovery diagnostic: -2 inactive, -1 all-off, 0..LED_COUNT-1 light
+  // that RAW strip pixel (bypassing the map). Rendered from the main loop so it
+  // doesn't race the idle-animation worker on the other core.
+  volatile int diagRawPixel = -2;
 
   // Move-highlight colours (editable via web, persisted in NVS).
   LedRGB hlSource{0, 255, 255};    // Cyan  — picked-up piece's square
@@ -336,6 +344,8 @@ private:
   float  animChessSpeedW{1.0f};           // 0.25–3.0 multiplier; >1 is faster
   float  animChessSpeedB{1.0f};
   char   mphPlayer{'w'};                  // player whose pickup is being animated
+  LedRGB mphColor{0, 0, 0};               // explicit walk-trail colour (player profile colour)
+  bool   mphUseColor{false};              // true → use mphColor instead of effectivePathColor
 
   // Exposed tuning values previously hard-coded in animations. All slider-
   // sized integers so they survive a NVS round-trip cleanly.
@@ -346,6 +356,16 @@ private:
   uint8_t replayOverlayPct{95};     // 0–100 — replay pulse white-blend strength
   bool dimOthersOnPickup{false};    // when set, non-path cells dim during pickup
   uint8_t dimOthersPct{50};         // 5–100 — dimmed brightness floor in %
+  uint16_t revealRingMs{220};       // 30–2000 — pickup reveal: time per distance ring
+  uint16_t revealPauseMs{700};      // 0–5000 — pickup reveal: pause before the loop repeats
+  bool     revealSequential{false}; // "noob" mode: reveal each possible move one after another
+  uint16_t noobBudgetMs{100};       // 20–2000 — "noob" mode: STAGGER between option starts
+                                    // (option i+1's point launches this many ms after option i)
+  uint16_t afterWalkMs{180};        // 40–800 — after-walk placement fade: per-square fade duration (lower = faster)
+  uint8_t  rayGhostVal{15};         // 0–255 — pickup reveal: raw brightness of squares BEHIND a blocker on a slider's ray (0 = off)
+  uint16_t shinySweepMs{1430};      // 300–5000 — turn-indicator "shiny" glint: DURATION of one diagonal sweep
+  uint16_t shinyPauseMs{0};         // 0–8000 — pause (timeout) between successive shiny sweeps
+  LedRGB   shinyColor{255, 255, 255}; // turn-indicator glint highlight colour (player glow blends toward this)
   bool simColorsActive{false};      // simulation mode overrides per-player colours
   LedRGB simColorW{40, 110, 255};   // sim white = blue
   LedRGB simColorB{60, 220, 90};    // sim black = green
@@ -413,6 +433,41 @@ private:
   void clearAllLEDs(bool show = true);
   void setSquareLED(int row, int col, LedRGB color);
   void showLEDs();
+  // Reset the LED row/col -> pixel-index map to the default straight wiring and
+  // persist it. Use when a sensor-driven calibration produced a wrong (offset)
+  // LED map — e.g. flaky Hall sensors mis-assigned squares to neighbouring LEDs.
+  void resetLedMapToDefault();
+  // --- LED-map recovery tooling (no sensors needed) ---
+  void setDiagRawPixel(int i) { diagRawPixel = i; }   // -2 inactive, -1 off, 0..63 raw pixel
+  int  getDiagRawPixel() const { return diagRawPixel; }
+  void renderDiagPixel();                              // light only the raw diag pixel (bypasses map)
+  bool setLedMap(const uint8_t* flat, int n);         // validate permutation of 0..LED_COUNT-1, set + persist
+  // Brightness headroom test: show all-white at a given luminance (bypasses the
+  // MAX_SAFE_BRIGHTNESS cap) so you can find how bright you can go without a
+  // brown-out on this strip. -1 = off. Rendered from the main loop (race-free).
+  volatile int brightnessTestLum = -1;
+  void setBrightnessTest(int lum) { brightnessTestLum = lum; }
+  int  getBrightnessTest() const { return brightnessTestLum; }
+  void renderBrightnessTest();                         // all-white at brightnessTestLum
+  void applyBrightness() { if (strip) strip->SetLuminance(brightness); }  // restore capped luminance
+  // Live settings preview: play the pickup-reveal effect on a sample layout with
+  // the CURRENT settings (reveal timing, dim, colours) so the user sees changes
+  // while adjusting sliders — no piece move needed. Triggered from the web.
+  volatile bool previewReq = false;
+  void requestRevealPreview() { previewReq = true; }
+  bool consumeRevealPreview() { if (previewReq) { previewReq = false; return true; } return false; }
+  void playRevealPreview();
+  // Live preview of the turn-indicator "shiny" effect on a sample layout. Unlike
+  // the one-shot reveal preview, this is a TOGGLE: it runs until switched off, so
+  // the user can compare settings while it loops.
+  volatile bool shinyPreviewOn = false;
+  void setShinyPreview(bool on) { shinyPreviewOn = on; }
+  bool isShinyPreviewOn() const { return shinyPreviewOn; }
+  void playShinyPreview();
+  // Reveal/noob preview as a TOGGLE: loops the pickup-reveal effect until off.
+  volatile bool revealLoopOn = false;
+  void setRevealLoop(bool on) { revealLoopOn = on; }
+  bool isRevealLoopOn() const { return revealLoopOn; }
   // Configurable move-highlight colours (shared by sim + real game).
   LedRGB hlSourceColor()  const { return hlSource; }
   LedRGB hlTargetColor()  const { return hlTarget; }
@@ -429,8 +484,10 @@ private:
   void checkmateSpiral();    // [legacy] outside-in red spiral
   void checkmateAnimation(const char board[8][8], char winner, LedRGB winnerColor, LedRGB loserColor, const char* winnerName = nullptr);
   void modeChangeTransition();  // TV-style off/on between animations
-  void movePathAnimation(int fromRow, int fromCol, int toRow, int toCol, char player = 'w');
+  void movePathAnimation(int fromRow, int fromCol, int toRow, int toCol, char player = 'w',
+                         LedRGB color = LedRGB{0, 0, 0}, bool useColor = false);
   void cellPulse(int row, int col, LedRGB color);   // soft pulse on a just-placed square
+  void heartbeatSquare(int row, int col, LedRGB peak); // quick lub-dub heartbeat on a just-placed square
   void multiPathHighlight(int srcR, int srcC,
                           const uint8_t* tgtR, const uint8_t* tgtC,
                           const uint8_t* tgtCapture, int nTargets,
@@ -469,6 +526,31 @@ private:
   void setDimOthersOnPickup(bool v)       { dimOthersOnPickup = v; }
   uint8_t getDimOthersPct() const         { return dimOthersPct; }
   void setDimOthersPct(uint8_t v)         { if (v < 5) v = 5; if (v > 100) v = 100; dimOthersPct = v; }
+  uint16_t getRevealRingMs() const        { return revealRingMs; }
+  void setRevealRingMs(uint16_t v)        { if (v < 30) v = 30; if (v > 2000) v = 2000; revealRingMs = v; }
+  uint16_t getRevealPauseMs() const       { return revealPauseMs; }
+  void setRevealPauseMs(uint16_t v)       { if (v > 5000) v = 5000; revealPauseMs = v; }
+  bool getRevealSequential() const        { return revealSequential; }
+  void setRevealSequential(bool v)        { revealSequential = v; }
+  uint16_t getNoobBudgetMs() const        { return noobBudgetMs; }
+  void setNoobBudgetMs(uint16_t v)        { if (v < 20) v = 20; if (v > 2000) v = 2000; noobBudgetMs = v; }
+  uint16_t getAfterWalkMs() const         { return afterWalkMs; }
+  void setAfterWalkMs(uint16_t v)         { if (v < 40) v = 40; if (v > 800) v = 800; afterWalkMs = v; }
+  uint8_t getRayGhostVal() const          { return rayGhostVal; }
+  void setRayGhostVal(uint8_t v)          { rayGhostVal = v; }   // 0–255 raw brightness
+  uint16_t getShinySweepMs() const        { return shinySweepMs; }
+  void setShinySweepMs(uint16_t v)        { if (v < 100) v = 100; if (v > 5000) v = 5000; shinySweepMs = v; }
+  uint16_t getShinyPauseMs() const        { return shinyPauseMs; }
+  void setShinyPauseMs(uint16_t v)        { if (v > 8000) v = 8000; shinyPauseMs = v; }
+  // True while the shiny glint is mid-sweep (vs. paused) — the resting render
+  // bursts at a high frame rate during this window so a fast sweep stays smooth.
+  bool isShinySweeping() const {
+    uint32_t cyc = (uint32_t)shinySweepMs + (uint32_t)shinyPauseMs;
+    if (cyc == 0) return false;
+    return ((uint32_t)millis() % cyc) < shinySweepMs;
+  }
+  LedRGB getShinyColor() const            { return shinyColor; }
+  void setShinyColor(LedRGB c)            { shinyColor = c; }
   void setSimColorsActive(bool v)         { simColorsActive = v; }
   bool getSimColorsActive() const         { return simColorsActive; }
   LedRGB simPathColorWhite() const        { return simColorW; }

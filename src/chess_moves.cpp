@@ -52,7 +52,7 @@ void ChessMoves::update() {
     // blocks internally during an active pickup (its source/target highlights
     // persist there), so this only repaints between moves — cheap and avoids a
     // dark board after a cancelled or illegal pickup clears the LEDs.
-    renderBoardLEDs();
+    renderRestingFrame();   // smooth the shiny glint between moves
   }
 
   boardDriver->updateSensorPrev();

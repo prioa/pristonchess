@@ -112,6 +112,18 @@ static ChessGame* _activeGameForCurrentMode();   // fwd decl — defined below
 
 static void tickChessClock(char activeTurn) {
   unsigned long now = millis();
+  // The main loop BLOCKS inside activeGame->update() while a move's pickup
+  // reveal + LED animations play (~1 s), and the side-to-move flips during
+  // that block. The elapsed interval since the last tick therefore spans the
+  // move animation — it must NOT be charged to the now-active side (the
+  // opponent), or every move would steal ~1 s from them. On a turn switch we
+  // reset the baseline and skip charging that interval.
+  static char _prevClockTurn = '?';
+  if (activeTurn != _prevClockTurn) {
+    _prevClockTurn = activeTurn;
+    chessClockLastMs = now;
+    return;
+  }
   uint32_t dt = (uint32_t)(now - chessClockLastMs);
   chessClockLastMs = now;
   // Game just ended (checkmate / stalemate / etc.) → stop the clock NOW.
@@ -159,6 +171,23 @@ void showGameSelection();
 void handleGameSelection();
 void handleBotConfigSelection();
 void initializeSelectedMode(GameMode mode);
+
+// Parse "#rrggbb" / "rrggbb" into an LedRGB. Returns false on malformed input.
+static bool parseHexColorLed(const String& hex, LedRGB& out) {
+  String h = hex;
+  if (h.startsWith("#")) h = h.substring(1);
+  if (h.length() != 6) return false;
+  auto hv = [](char c) -> int {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+  };
+  int v[6];
+  for (int i = 0; i < 6; i++) { v[i] = hv(h[i]); if (v[i] < 0) return false; }
+  out = LedRGB{(uint8_t)(v[0] * 16 + v[1]), (uint8_t)(v[2] * 16 + v[3]), (uint8_t)(v[4] * 16 + v[5])};
+  return true;
+}
 
 void setup() {
   Serial.begin(115200);
@@ -571,6 +600,65 @@ void loop() {
   }
 
   if (currentMode == MODE_SELECTION) {
+    // Live settings preview: play the pickup-reveal effect on a sample layout
+    // with the current settings. Idle stopped first → no RMT race; restarted after.
+    if (boardDriver.consumeRevealPreview()) {
+      if (idleRainbowStop) { idleRainbowStop->store(true); idleRainbowStop = nullptr; }
+      boardDriver.waitForAnimationQueue(800);
+      boardDriver.playRevealPreview();
+      idleRainbowStop = boardDriver.startIdleAnimation();
+      return;
+    }
+    // Endless pickup-reveal preview — a TOGGLE: playRevealPreview loops while
+    // revealLoopOn (set via /board-preview-loop), then idle resumes.
+    if (boardDriver.isRevealLoopOn()) {
+      if (idleRainbowStop) { idleRainbowStop->store(true); idleRainbowStop = nullptr; }
+      boardDriver.waitForAnimationQueue(800);
+      boardDriver.playRevealPreview();
+      idleRainbowStop = boardDriver.startIdleAnimation();
+      return;
+    }
+    // Live preview of the turn-indicator "shiny" glint — a TOGGLE: playShinyPreview
+    // loops until the web switches it off, then the idle animation resumes.
+    if (boardDriver.isShinyPreviewOn()) {
+      if (idleRainbowStop) { idleRainbowStop->store(true); idleRainbowStop = nullptr; }
+      boardDriver.waitForAnimationQueue(800);
+      boardDriver.playShinyPreview();
+      idleRainbowStop = boardDriver.startIdleAnimation();
+      return;
+    }
+    // Brightness headroom test: show all-white at the requested luminance so the
+    // user can find the brown-out limit on this strip. Idle stopped → no RMT race.
+    static bool _wasBrightnessTest = false;
+    if (boardDriver.getBrightnessTest() >= 0) {
+      _wasBrightnessTest = true;
+      if (idleRainbowStop) { idleRainbowStop->store(true); idleRainbowStop = nullptr; }
+      boardDriver.waitForAnimationQueue(800);
+      boardDriver.renderBrightnessTest();
+      delay(120);
+      return;
+    }
+    if (_wasBrightnessTest) {            // test just ended → restore capped luminance
+      _wasBrightnessTest = false;
+      boardDriver.applyBrightness();
+      boardDriver.clearAllLEDs();
+    }
+    // LED-map recovery diagnostic: while a raw pixel is requested via the web
+    // tool, suspend the idle animation and drive that single strip pixel here
+    // (main loop = no RMT race with the idle worker on the other core).
+    if (boardDriver.getDiagRawPixel() != -2) {
+      if (idleRainbowStop) {
+        idleRainbowStop->store(true);
+        idleRainbowStop = nullptr;
+      }
+      boardDriver.waitForAnimationQueue(800);
+      boardDriver.renderDiagPixel();
+      delay(80);
+      return;
+    }
+    // Diag just exited (pixel back to -2) but we stopped idle — restart it.
+    if (!idleRainbowStop)
+      idleRainbowStop = boardDriver.startIdleAnimation();
     // Restart idle animation if the type or color was changed via web UI
     if (boardDriver.consumeAnimationRestartRequest()) {
       if (idleRainbowStop) {
@@ -579,7 +667,16 @@ void loop() {
       }
       idleRainbowStop = boardDriver.startIdleAnimation();
     }
-    handleGameSelection();
+    // Reine Web-Steuerung: Die Modus-Auswahl erfolgt ausschließlich über die
+    // Weboberfläche (getSelectedGameMode() oben). Der physische Hall-Sensor-
+    // Selektor (handleGameSelection) wird bewusst NICHT mehr ausgewertet — sonst
+    // löst ein floatender/defekter Sensor (z. B. tote Spalte 4) eine Phantom-
+    // Auswahl aus und das Brett startet ungefragt den Bot-Modus.
+    // Die Sensoren werden hier aber WEITER gescannt, damit die Debug-/Diagnose-
+    // Ansicht (handleDebugState liest die gecachten sensorState[][]) live bleibt.
+    boardDriver.readSensors();
+    boardDriver.updateSensorPrev();
+    delay(SENSOR_READ_DELAY_MS);
     return;
   }
   // Game mode selected
@@ -681,12 +778,8 @@ void showGameSelection() {
   boardDriver.waitForAnimationQueue(2500);
   idleRainbowStop = boardDriver.startIdleAnimation();
   Serial.println("=============== Game Selection Mode ===============");
-  Serial.println("Four LEDs are lit in the center of the board:");
-  Serial.println("  Blue:   Chess Moves (Human vs Human)");
-  Serial.println("  Green:  Chess Bot (Human vs AI)");
-  Serial.println("  Yellow: Lichess (Play online games)");
-  Serial.println("  Red:    Sensor Test");
-  Serial.println("Place any chess piece on a LED to select that mode");
+  Serial.println("Modus-Auswahl erfolgt ueber die Weboberflaeche");
+  Serial.println("(pristonchess.local bzw. IP -> Spielmodus waehlen).");
   Serial.println("===================================================");
 }
 
@@ -830,6 +923,15 @@ void initializeSelectedMode(GameMode mode) {
         String wName = profiles.nameForId(wifiManager.getHvHWhiteId().c_str());
         String bName = profiles.nameForId(wifiManager.getHvHBlackId().c_str());
         chessMoves->setPlayerNames(wName.c_str(), bName.c_str());
+        // Per-player glow + move-highlight colours from each profile's colour.
+        LedRGB wCol, bCol;
+        bool okW = parseHexColorLed(profiles.colorForId(wifiManager.getHvHWhiteId().c_str()), wCol);
+        bool okB = parseHexColorLed(profiles.colorForId(wifiManager.getHvHBlackId().c_str()), bCol);
+        if (okW && okB) {
+          chessMoves->setPlayerColors(wCol, bCol);
+          Serial.printf("HvH player colours: white=#%02x%02x%02x black=#%02x%02x%02x\n",
+                        wCol.r, wCol.g, wCol.b, bCol.r, bCol.g, bCol.b);
+        }
       }
       chessMoves->begin();
       break;

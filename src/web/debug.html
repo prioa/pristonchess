@@ -35,6 +35,7 @@
   }
   .pill span { color: #7cf; }
   .pill.ok span  { color: #7f7; }
+  .pill.warn span { color: #fc7; }
   .pill.err span { color: #f77; }
 
   /* Controls */
@@ -227,6 +228,30 @@
 </div>
 
 <div class="section">
+  <h2>🔊 Sound-Tests</h2>
+  <div style="color:#888;font-size:11px;margin-bottom:6px;">
+    Spielt die synthetischen Spiel-Sounds zum Testen. iOS: Stumm-Schalter aus + Lautstärke hoch; der erste Tipp gibt Audio frei.
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;">
+    <button onclick="sndTest('P')" title="Figur anheben">⬆️ Pickup</button>
+    <button onclick="sndTest('D')" title="Figur absetzen (Zug)">⬇️ Place</button>
+    <button onclick="sndCaptureFile()" title="Echtes Schwert-File (sounds/sword.m4a) — im Spiel bei JEDEM Schlag">⚔️ Capture (Schwert)</button>
+    <button onclick="sndTest('W')" title="Falsche Farbe / Gegner dran">⛔ Fehler</button>
+    <button onclick="sndBeepRaw()" title="Roher 440Hz-Ton, 0.5s, laut — simpelster Test">🔔 Roh-Ton</button>
+  </div>
+  <div style="color:#888;font-size:11px;margin:8px 0 4px;">Synth-Alternativen pro Figur (im Spiel aktuell NICHT aktiv — dort spielt das Schwert-File für alle):</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;">
+    <button onclick="sndPiece('R')" title="Turm geschlagen">🏰 Turm (bröckeln)</button>
+    <button onclick="sndPiece('N')" title="Springer geschlagen">🐴 Springer (wiehern)</button>
+    <button onclick="sndPiece('B')" title="Läufer geschlagen">⛪ Läufer (Glocke)</button>
+    <button onclick="sndPiece('Q')" title="Dame geschlagen">👑 Dame (splittern)</button>
+    <button onclick="sndPiece('P')" title="Bauer geschlagen">♟ Bauer (Thud)</button>
+    <button onclick="sndPiece('K')" title="König (selten)">♚ König (Gong)</button>
+  </div>
+  <div id="sndStatus" style="font-size:11px;color:#555;margin-top:6px;"></div>
+</div>
+
+<div class="section">
   <h2>🖥️ Serial-Monitor (live)</h2>
   <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
     <button id="serialPauseBtn" onclick="toggleSerialPause()">⏸ Pause</button>
@@ -313,6 +338,142 @@ function beep() {
     g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.12);
     o.stop(audioCtx.currentTime + 0.13);
   } catch (e) {}
+}
+
+// --- Game sound tests (same synthesis as board.html) ---
+function _sndCtx() {
+  if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx || null;
+}
+// Safari garbage-collects audio nodes the moment the function returns, so the
+// sound never plays ("state running, no tone"). Hold a reference until 'ended'.
+const _sndLive = new Set();
+function _keep(node) { _sndLive.add(node); node.addEventListener('ended', () => _sndLive.delete(node)); }
+function _beep(opts) {
+  const ctx = _sndCtx(); if (!ctx) return;
+  const now = ctx.currentTime + (opts.delay || 0);
+  const osc = ctx.createOscillator(), g = ctx.createGain();
+  osc.type = opts.type || 'triangle';
+  osc.frequency.setValueAtTime(opts.f0, now);
+  if (opts.f1) osc.frequency.exponentialRampToValueAtTime(opts.f1, now + opts.dur);
+  g.gain.setValueAtTime(opts.gain, now);                       // start audible (no up-ramp)
+  g.gain.exponentialRampToValueAtTime(0.0001, now + opts.dur); // decay
+  osc.connect(g); g.connect(ctx.destination);                 // split chain (Safari)
+  osc.start(now); osc.stop(now + opts.dur + 0.03);
+  _keep(osc);
+}
+function _clack(gain, dur) {
+  const ctx = _sndCtx(); if (!ctx) return;
+  const now = ctx.currentTime, n = Math.max(1, (ctx.sampleRate * dur) | 0);
+  const buf = ctx.createBuffer(1, n, ctx.sampleRate), ch = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  const src = ctx.createBufferSource(); src.buffer = buf;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(gain, now);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+  src.connect(g); g.connect(ctx.destination); src.start(now);
+  _keep(src);
+}
+function _noiseBurst(opts) {
+  const ctx = _sndCtx(); if (!ctx) return;
+  const now = ctx.currentTime + (opts.delay || 0);
+  const n = Math.max(1, (ctx.sampleRate * opts.dur) | 0);
+  const buf = ctx.createBuffer(1, n, ctx.sampleRate), ch = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  const src = ctx.createBufferSource(); src.buffer = buf;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(opts.gain, now);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + opts.dur);
+  let node = src;
+  if (opts.lp) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = opts.lp; src.connect(f); node = f; }
+  node.connect(g); g.connect(ctx.destination);
+  src.start(now); _keep(src);
+}
+function playCaptureSound() { _beep({ type: 'triangle', f0: 230, f1: 85, dur: 0.18, gain: 0.32 }); _clack(0.22, 0.045); }
+function playRookCrumble() {
+  _beep({ type: 'triangle', f0: 150, f1: 50, dur: 0.2, gain: 0.3 });
+  for (let i = 0; i < 9; i++) _noiseBurst({ gain: 0.10 + Math.random() * 0.12, dur: 0.04 + Math.random() * 0.05, lp: 1000 + Math.random() * 2500, delay: 0.04 + Math.random() * 0.5 });
+}
+function playKnightNeigh() {
+  const ctx = _sndCtx(); if (!ctx) return;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator(); osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(520, now);
+  osc.frequency.exponentialRampToValueAtTime(175, now + 0.55);
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1100; bp.Q.value = 4;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.exponentialRampToValueAtTime(0.28, now + 0.05);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+  const lfo = ctx.createOscillator(); lfo.type = 'sine';
+  lfo.frequency.setValueAtTime(7, now); lfo.frequency.exponentialRampToValueAtTime(26, now + 0.5);
+  const lfoG = ctx.createGain(); lfoG.gain.value = 0.16;
+  lfo.connect(lfoG); lfoG.connect(g.gain);
+  osc.connect(bp); bp.connect(g); g.connect(ctx.destination);
+  osc.start(now); osc.stop(now + 0.62);
+  lfo.start(now); lfo.stop(now + 0.62);
+  _keep(osc); _keep(lfo);
+}
+function playBishopChime() {
+  _beep({ type: 'sine', f0: 880, dur: 0.5, gain: 0.18 });
+  _beep({ type: 'sine', f0: 2112, dur: 0.45, gain: 0.07 });
+  _beep({ type: 'sine', f0: 2728, dur: 0.35, gain: 0.045 });
+}
+function playQueenShatter() {
+  _beep({ type: 'sawtooth', f0: 1200, f1: 300, dur: 0.22, gain: 0.16 });
+  _beep({ type: 'triangle', f0: 170, f1: 80, dur: 0.2, gain: 0.2 });
+  for (let i = 0; i < 7; i++) _noiseBurst({ gain: 0.07 + Math.random() * 0.08, dur: 0.03 + Math.random() * 0.04, lp: 3000 + Math.random() * 4000, delay: 0.02 + Math.random() * 0.32 });
+}
+function playKingGong() {
+  _beep({ type: 'sine', f0: 120, dur: 0.8, gain: 0.3 });
+  _beep({ type: 'sine', f0: 181, dur: 0.8, gain: 0.14 });
+  _noiseBurst({ gain: 0.16, dur: 0.3, lp: 800 });
+}
+function sndPiece(letter) {
+  const ctx = _sndCtx();
+  const st = document.getElementById('sndStatus');
+  switch ((letter || '').toUpperCase()) {
+    case 'R': playRookCrumble(); break;
+    case 'N': playKnightNeigh(); break;
+    case 'B': playBishopChime(); break;
+    case 'Q': playQueenShatter(); break;
+    case 'K': playKingGong(); break;
+    default:  playCaptureSound(); break;
+  }
+  if (st) st.textContent = (!ctx) ? '⚠ kein Audio-Context' : (ctx.state === 'suspended' ? '⚠ Audio gesperrt — nochmal tippen' : '▶ Schlag-Sound ' + letter + ' (state: ' + ctx.state + ')');
+}
+let _swordAudio = null;
+function sndCaptureFile() {
+  const st = document.getElementById('sndStatus');
+  if (_swordAudio === null) { try { _swordAudio = new Audio('./sounds/sword.m4a'); } catch (e) { _swordAudio = false; } }
+  if (!_swordAudio) { if (st) st.textContent = '⚠ sword.m4a nicht ladbar'; return; }
+  try {
+    _swordAudio.currentTime = 0;
+    const p = _swordAudio.play();
+    if (p && p.catch) p.catch((e) => { if (st) st.textContent = '⚠ play() blockiert: ' + e.name; });
+    if (st) st.textContent = '▶ Schwert (sounds/sword.m4a)';
+  } catch (e) { if (st) st.textContent = '⚠ Fehler: ' + e; }
+}
+function sndBeepRaw() {
+  const ctx = _sndCtx();
+  const st = document.getElementById('sndStatus');
+  if (!ctx) { if (st) st.textContent = '⚠ kein Audio-Context'; return; }
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = 'square'; o.frequency.value = 440; g.gain.value = 0.25;
+  o.connect(g); g.connect(ctx.destination);
+  o.start(); o.stop(ctx.currentTime + 0.5);
+  _keep(o);
+  if (st) st.textContent = '▶ Roh-Ton 440Hz/0.5s (state: ' + ctx.state + ', sr: ' + ctx.sampleRate + ', destCh: ' + ctx.destination.channelCount + ')';
+}
+function sndTest(which) {
+  const ctx = _sndCtx();
+  const st = document.getElementById('sndStatus');
+  if (which === 'C')      { _beep({ type: 'triangle', f0: 230, f1: 85, dur: 0.18, gain: 0.32 }); _clack(0.22, 0.045); }
+  else if (which === 'D') { _beep({ type: 'triangle', f0: 300, f1: 170, dur: 0.09, gain: 0.22 }); _clack(0.10, 0.02); }
+  else if (which === 'P') { _beep({ type: 'sine', f0: 520, f1: 770, dur: 0.06, gain: 0.16 }); }
+  else if (which === 'W') { _beep({ type: 'square', f0: 165, f1: 120, dur: 0.11, gain: 0.15 }); _beep({ type: 'square', f0: 150, f1: 110, dur: 0.11, gain: 0.15, delay: 0.15 }); }
+  if (st) st.textContent = (!ctx) ? '⚠ Kein Audio-Context (Browser blockt)' : (ctx.state === 'suspended' ? '⚠ Audio gesperrt — nochmal tippen / Stumm-Schalter aus' : '▶ gespielt: ' + which + ' (state: ' + ctx.state + ')');
 }
 
 function toggleGuided() {
@@ -459,11 +620,22 @@ function update(data) {
   const mins  = String(Math.floor(up/60)).padStart(2,'0');
   const secs  = String(up%60).padStart(2,'0');
   const srInvert = data.hw?.srInvert;
+  const tempC = data.tempC;
+  let tempPill = '';
+  if (typeof tempC === 'number' && isFinite(tempC)) {
+    const cls = tempC >= 80 ? 'err' : (tempC >= 65 ? 'warn' : 'ok');
+    tempPill = `<div class="pill ${cls}" title="Interner ESP32-Die-Sensor — Chip-Temperatur, nicht Umgebung">Chip-Temp: <span>${tempC.toFixed(1)} &deg;C</span></div>`;
+  } else {
+    // temperatureRead() liefert auf dem originalen ESP32 (WROOM-32) NaN → von
+    // ArduinoJson weggelassen. Zeige es klar als nicht verfuegbar an.
+    tempPill = `<div class="pill warn" title="Interner Die-Sensor liefert keinen Wert — beim originalen ESP32 (WROOM-32) nicht nutzbar, erst ab S2/S3/C3">Chip-Temp: <span>n/a</span></div>`;
+  }
   sb.innerHTML = `
     <div class="pill ${calib ? 'ok' : 'err'}">Kalibriert: <span>${calib ? 'Ja' : 'Nein'}</span></div>
     <div class="pill ok" title="SR_INVERT=1 = korrekt fuer PNP-Transistoren (z.B. 2N3906)">SR Invert: <span>${srInvert ? 'AN (PNP)' : 'AUS'}</span></div>
     <div class="pill">Freier Heap: <span>${heap} KB</span></div>
     <div class="pill">Uptime: <span>${mins}:${secs}</span></div>
+    ${tempPill}
   `;
 
   // Sensor-Monitor (big tiles + change detection + ping + guided)

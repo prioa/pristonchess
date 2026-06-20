@@ -100,6 +100,7 @@ void SimulationMode::begin() {
   replaying  = true; // suppresses physical-move waits + LED animations inside applyMove
   step       = 0;
   finished   = false;
+  awaitingPlace = false;
   lastTickMs = millis();
   // Reset the shared chess clock so each playback starts from full time.
   chessClock.resetTo(5UL * 60UL * 1000UL);
@@ -116,8 +117,38 @@ void SimulationMode::update() {
   if (current == nullptr) return;
 
   if (!finished) {
-    if (now - lastTickMs < MOVE_INTERVAL_MS) return;
+    // Pickup phase: emit the SAME pickup event a physical lift would, so the
+    // pickup sound plays in simulation too (effects are mode-agnostic — see the
+    // central sound routing in board.html). Broadcast the unchanged position so
+    // the web client receives the new sound seq before the place lands.
+    if (!awaitingPlace) {
+      if (now - lastTickMs < MOVE_INTERVAL_MS) return;
+      lastTickMs = now;
+      const ScriptedMove& mp = current->moves[step];
+      char piece = board[mp.fromRow][mp.fromCol];
+      if (wifiManager) {
+        wifiManager->pushSoundEvent('P', piece);
+        wifiManager->updateBoardState(
+            ChessUtils::boardToFEN(board, currentTurn, chessEngine),
+            ChessUtils::evaluatePosition(board));
+      }
+      // In noob mode, show the same reachable-move preview a physical pickup would
+      // (there's no sensor loop in the sim) — dim all reachable squares + race a
+      // bright point along each option. Skipped when noob is off so the demo stays
+      // brisk. previewReachable blocks for ~one cycle, which doubles as the
+      // pickup→place beat.
+      if (boardDriver->getRevealSequential()) {
+        int mc = 0, mv[28][2];
+        chessEngine->getPossibleMoves(board, mp.fromRow, mp.fromCol, mc, mv);
+        previewReachable(mp.fromRow, mp.fromCol, mv, mc, piece);
+      }
+      awaitingPlace = true;
+      return;
+    }
+    // Place phase: a short beat after the pickup, actually apply the move.
+    if (now - lastTickMs < PICKUP_TO_PLACE_MS) return;
     lastTickMs = now;
+    awaitingPlace = false;
 
     const ScriptedMove& m = current->moves[step];
     Serial.printf("[SIM] %s step %u: %c%d -> %c%d\n",
@@ -213,8 +244,16 @@ void SimulationMode::renderHighlights(const String& fromSq, const String& target
   if (n > 0) {
     // Per-player styling: pick the side of the piece on the source square.
     char piece = board[srcR][srcC];
-    char player = ChessUtils::isWhitePiece(piece) ? 'w' : 'b';
-    boardDriver->multiPathHighlight(srcR, srcC, tR, tC, tCap, n, player);
+    if (boardDriver->getRevealSequential()) {
+      // Noob mode: trace each option ONE AFTER ANOTHER with the moving point,
+      // instead of showing every path at once (multiPathHighlight).
+      int mv[28][2];
+      for (int i = 0; i < n && i < 28; i++) { mv[i][0] = tR[i]; mv[i][1] = tC[i]; }
+      previewReachable(srcR, srcC, mv, n, piece);
+    } else {
+      char player = ChessUtils::isWhitePiece(piece) ? 'w' : 'b';
+      boardDriver->multiPathHighlight(srcR, srcC, tR, tC, tCap, n, player);
+    }
   } else {
     // No targets (e.g. blocked piece) — just show the source highlight on top
     // of the base picture so the user gets visual feedback for their click.

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>PristonChess — Sounds</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="stylesheet" href="./css/styles.css">
+  <style>
+    body { background: var(--color-bg); color: var(--color-text);
+      font-family: 'Exo 2', system-ui, sans-serif; margin: 0; padding: 0 0 40px;
+      -webkit-text-size-adjust: 100%; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+    header { display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+      position: sticky; top: 0; background: var(--color-bg-elev-1);
+      border-bottom: 1px solid var(--color-border); z-index: 10; }
+    header a { color: var(--color-text-muted); text-decoration: none; font-size: 22px;
+      line-height: 1; padding: 4px 8px; border-radius: 8px; }
+    header a:active { background: var(--color-bg-elev-3); }
+    header h1 { font-size: 18px; margin: 0; font-weight: 700; }
+    .hint { color: var(--color-text-muted); font-size: 13px; line-height: 1.5;
+      margin: 4px 0 16px; }
+    .card { background: var(--color-bg-elev-2); border: 1px solid var(--color-border);
+      border-radius: 14px; padding: 14px 16px; margin-bottom: 14px; }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; }
+    .toggle-row .lbl { font-weight: 600; }
+    .toggle-row .sub { color: var(--color-text-muted); font-size: 12px; margin-top: 2px; }
+    /* iOS-style switch */
+    .sw { position: relative; width: 50px; height: 30px; flex: 0 0 auto; }
+    .sw input { opacity: 0; width: 0; height: 0; }
+    .sw .track { position: absolute; inset: 0; background: var(--color-bg-elev-3);
+      border: 1px solid var(--color-border-strong); border-radius: 30px;
+      transition: background .2s; }
+    .sw .track::before { content: ''; position: absolute; width: 24px; height: 24px;
+      left: 3px; top: 2px; border-radius: 50%; background: #fff; transition: transform .2s; }
+    .sw input:checked + .track { background: var(--color-accent); border-color: transparent; }
+    .sw input:checked + .track::before { transform: translateX(20px); }
+    button.btn { background: var(--color-accent); color: #fff; border: none;
+      border-radius: 10px; padding: 10px 16px; font-size: 14px; font-weight: 600;
+      cursor: pointer; font-family: inherit; }
+    button.btn.secondary { background: var(--color-bg-elev-3); color: var(--color-text); }
+    button.btn:active { filter: brightness(.9); }
+    button.btn:disabled { opacity: .5; }
+    .sync-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .sync-status { font-size: 13px; color: var(--color-text-muted); }
+    .storage { font-size: 12px; color: var(--color-text-subtle); margin-top: 10px; }
+    h2.sect { font-size: 13px; text-transform: uppercase; letter-spacing: 1px;
+      color: var(--color-text-muted); margin: 22px 4px 8px; }
+    .piece-row { padding: 12px 0; border-bottom: 1px solid var(--color-border); }
+    .piece-row:last-child { border-bottom: none; }
+    .piece-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .piece-glyph { font-size: 22px; width: 28px; text-align: center; }
+    .piece-name { font-weight: 600; flex: 1; }
+    .add-btn { background: var(--color-accent-bg); color: var(--color-accent-soft);
+      border: 1px solid var(--color-accent-ring); border-radius: 9px; padding: 6px 12px;
+      font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .clips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .clip { display: inline-flex; align-items: center; gap: 6px; background: var(--color-bg-elev-3);
+      border: 1px solid var(--color-border); border-radius: 999px; padding: 5px 6px 5px 10px;
+      font-size: 12px; max-width: 100%; }
+    .clip .nm { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .clip .play, .clip .del { cursor: pointer; border: none; background: transparent;
+      color: var(--color-text-muted); font-size: 14px; padding: 2px 4px; border-radius: 6px;
+      line-height: 1; }
+    .clip .play:active, .clip .del:active { background: var(--color-bg-elev-1); }
+    .clip .del { color: var(--color-danger); }
+    .clip.remote { border-color: var(--color-accent-ring); }
+    .clip .badge { font-size: 9px; text-transform: uppercase; letter-spacing: .5px;
+      color: var(--color-accent-soft); background: var(--color-accent-bg);
+      padding: 1px 5px; border-radius: 5px; }
+    .empty { font-size: 12px; color: var(--color-text-subtle); font-style: italic; }
+    .disabledBox { opacity: .45; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="./index.html" aria-label="Zurück">‹</a>
+    <h1>🔊 Soundeffekte</h1>
+  </header>
+  <div class="wrap">
+    <div class="card">
+      <div class="toggle-row">
+        <div>
+          <div class="lbl">Eigene Sounds verwenden</div>
+          <div class="sub">Zufällige Effekte pro Figur beim Aufheben, Platzieren &amp; Schlagen. Sonst Standard-Töne.</div>
+        </div>
+        <label class="sw"><input type="checkbox" id="enableToggle"><span class="track"></span></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sync-row">
+        <button class="btn secondary" id="syncBtn">☁︎ Aus Cloud laden</button>
+        <span class="sync-status" id="syncStatus"></span>
+      </div>
+      <div class="storage" id="storage"></div>
+      <p class="hint" style="margin:10px 0 0;">Kuratierte Sounds liegen im Projekt-Repo und werden hierher (in den Browser) geladen. Eigene Dateien fügst du pro Figur hinzu — am besten <b>kurze Mono-.m4a</b> (~5–15&nbsp;KB). Gespeichert wird auf diesem Gerät.</p>
+    </div>
+
+    <div id="manager"></div>
+  </div>
+
+  <input type="file" id="fileInput" accept="audio/*" style="display:none">
+  <script src="./scripts/custom-sounds.js"></script>
+  <script>
+    var PIECES = [
+      { p: 'P', glyph: '♟', name: 'Bauer' },
+      { p: 'N', glyph: '♞', name: 'Springer' },
+      { p: 'B', glyph: '♝', name: 'Läufer' },
+      { p: 'R', glyph: '♜', name: 'Turm' },
+      { p: 'Q', glyph: '♛', name: 'Dame' },
+      { p: 'K', glyph: '♚', name: 'König' }
+    ];
+    // Shared fallback set used by any figure without its own clips.
+    var DEF = { p: '*', glyph: '★', name: 'Standard (alle ohne eigene)' };
+    var CATS = [
+      { id: 'pickup',  label: 'Aufheben',        pieces: [DEF].concat(PIECES) },
+      { id: 'place',   label: 'Platzieren',      pieces: [DEF].concat(PIECES) },
+      { id: 'capture', label: 'Schlagen',        pieces: [DEF].concat(PIECES) },
+      { id: 'win',     label: 'Bei Spielgewinn', pieces: [{ p: '*', glyph: '🏆', name: 'Sieg-Sound' }] },
+      { id: 'error',   label: 'Falscher/ungültiger Zug', pieces: [{ p: '*', glyph: '⛔', name: 'Fehler-Sound' }] }
+    ];
+
+    var _pending = null; // { cat, piece } for the shared file input
+    var fileInput = document.getElementById('fileInput');
+
+    function fmtKB(b) { return (b / 1024).toFixed(b < 10240 ? 1 : 0) + ' KB'; }
+
+    function rowId(cat, p) { return 'row_' + cat + '_' + p; }
+
+    function buildManager() {
+      var host = document.getElementById('manager');
+      host.innerHTML = '';
+      CATS.forEach(function (c) {
+        var h = document.createElement('h2');
+        h.className = 'sect'; h.textContent = c.label;
+        host.appendChild(h);
+        var card = document.createElement('div'); card.className = 'card';
+        c.pieces.forEach(function (pc) {
+          var row = document.createElement('div');
+          row.className = 'piece-row';
+          var head = document.createElement('div'); head.className = 'piece-head';
+          head.innerHTML = '<span class="piece-glyph">' + pc.glyph + '</span>' +
+                           '<span class="piece-name">' + pc.name + '</span>';
+          var add = document.createElement('button'); add.className = 'add-btn';
+          add.textContent = '＋ Sound';
+          add.onclick = function () { pickFile(c.id, pc.p); };
+          head.appendChild(add);
+          row.appendChild(head);
+          var clips = document.createElement('div');
+          clips.className = 'clips'; clips.id = rowId(c.id, pc.p);
+          row.appendChild(clips);
+          card.appendChild(row);
+        });
+        host.appendChild(card);
+      });
+      CATS.forEach(function (c) { c.pieces.forEach(function (pc) { refreshRow(c.id, pc.p); }); });
+    }
+
+    function refreshRow(cat, p) {
+      var host = document.getElementById(rowId(cat, p));
+      if (!host) return;
+      CustomSounds.list(cat, p).then(function (items) {
+        host.innerHTML = '';
+        if (!items.length) {
+          var e = document.createElement('span'); e.className = 'empty';
+          e.textContent = 'keine — Standardton'; host.appendChild(e); return;
+        }
+        items.forEach(function (it) {
+          var chip = document.createElement('span');
+          chip.className = 'clip' + (it.source === 'remote' ? ' remote' : '');
+          var play = document.createElement('button');
+          play.className = 'play'; play.textContent = '▶'; play.title = 'Anhören';
+          play.onclick = function () { CustomSounds.preview(it.id); };
+          chip.appendChild(play);
+          var nm = document.createElement('span'); nm.className = 'nm';
+          nm.textContent = it.name; chip.appendChild(nm);
+          if (it.source === 'remote') {
+            var b = document.createElement('span'); b.className = 'badge';
+            b.textContent = 'CDN'; chip.appendChild(b);
+          } else {
+            var del = document.createElement('button');
+            del.className = 'del'; del.textContent = '✕'; del.title = 'Löschen';
+            del.onclick = function () {
+              CustomSounds.remove(it.id).then(function () { refreshRow(cat, p); updateStorage(); });
+            };
+            chip.appendChild(del);
+          }
+          host.appendChild(chip);
+        });
+      });
+    }
+
+    function pickFile(cat, p) { _pending = { cat: cat, piece: p }; fileInput.value = ''; fileInput.click(); }
+
+    fileInput.addEventListener('change', function () {
+      var f = fileInput.files && fileInput.files[0];
+      if (!f || !_pending) return;
+      if (f.size > 200 * 1024) {
+        if (!confirm('Diese Datei ist ' + fmtKB(f.size) + ' groß. Für Effekte werden kurze Mono-Clips (<150 KB) empfohlen. Trotzdem hinzufügen?')) return;
+      }
+      var pend = _pending;
+      CustomSounds.add(pend.cat, pend.piece, f).then(function () {
+        refreshRow(pend.cat, pend.piece); updateStorage();
+      }).catch(function (e) { alert('Konnte Sound nicht speichern: ' + e); });
+    });
+
+    function updateStorage() {
+      CustomSounds.totalBytes().then(function (b) {
+        document.getElementById('storage').textContent = 'Belegt: ' + fmtKB(b) + ' im Browser-Speicher.';
+      });
+    }
+
+    function setEnabledUI(on) {
+      document.getElementById('manager').classList.toggle('disabledBox', !on);
+    }
+
+    document.getElementById('enableToggle').addEventListener('change', function () {
+      CustomSounds.setEnabled(this.checked); setEnabledUI(this.checked);
+    });
+
+    document.getElementById('syncBtn').addEventListener('click', function () {
+      var btn = this, st = document.getElementById('syncStatus');
+      btn.disabled = true; st.textContent = 'lädt…';
+      CustomSounds.sync().then(function (r) {
+        st.textContent = '✓ ' + r.added + ' neu, ' + r.removed + ' entfernt (' + r.total + ' im Set)';
+        buildManager(); updateStorage();
+      }).catch(function (e) {
+        st.textContent = '⚠ Fehler: ' + (e.message || e);
+      }).then(function () { btn.disabled = false; });
+    });
+
+    // iOS: prime the audio pool on the first touch so previews can play.
+    ['pointerdown', 'touchstart', 'click'].forEach(function (e) {
+      document.addEventListener(e, function () { try { CustomSounds.unlock(); } catch (x) {} }, { passive: true });
+    });
+
+    CustomSounds.init().then(function () {
+      var on = CustomSounds.isEnabled();
+      document.getElementById('enableToggle').checked = on;
+      setEnabledUI(on);
+      buildManager();
+      updateStorage();
+    });
+  </script>
+</body>
+</html>

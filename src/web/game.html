@@ -191,6 +191,142 @@
             font-weight: 500;
         }
 
+        /* Primary player picker — the focus of the "Neues Spiel" modal. */
+        .hvh-primary-label {
+            font-size: 13px !important;
+            color: var(--color-text) !important;
+            font-weight: 700 !important;
+            letter-spacing: 0 !important;
+            text-transform: none !important;
+        }
+        /* Secondary block (time / side) — visually subordinate to the players:
+           a divider, muted labels and smaller pills. */
+        .hvh-secondary {
+            border-top: 1px solid var(--color-border);
+            padding-top: var(--space-3);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-3);
+            opacity: 0.9;
+        }
+        .hvh-secondary > .form-group > label {
+            font-size: 10.5px;
+            color: var(--color-text-muted);
+            margin-bottom: 6px;
+        }
+        #hvhModal .hvh-secondary .option-group.pills .toggle-btn.pill {
+            flex: 1 1 calc(20% - 6px);
+            min-width: 52px;
+            padding: 8px 10px;
+            font-size: 12.5px;
+            font-weight: 500;
+        }
+
+        /* Wizard steps: revealed one after another with a slide/fade-in. */
+        #hvhModal .modal-box { overflow-y: auto; }
+        .hvh-step { display: none; }
+        .hvh-step.revealed { display: block; animation: hvhStepIn 340ms cubic-bezier(.2,.7,.2,1) both; }
+        @keyframes hvhStepIn {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .hvh-step + .hvh-step.revealed { margin-top: 14px; }
+        .hvh-step-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--color-text);
+            margin: 2px 0 8px;
+        }
+        /* Big, TALL player buttons — easy to tap on mobile. */
+        #hvhModal .player-radio-grid.hvh-big { gap: 10px; max-height: 46vh; overflow-y: auto; }
+        #hvhModal .hvh-big .player-radio-tile {
+            padding: 18px 16px; min-height: 64px; font-size: 16px; border-radius: 12px;
+        }
+        #hvhModal .hvh-big .player-radio-tile .pr-avatar { width: 36px; height: 36px; font-size: 18px; }
+
+        /* Collapsed picker: the chosen player shrinks to a compact chip at the top,
+           the full grid + big label hide, and step 2 spawns directly below. */
+        .hvh-summary {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 12px;
+            background: var(--color-bg-elev-2);
+            border: 1px solid var(--color-accent, #f0c040);
+            border-radius: 9px;
+            cursor: pointer;
+        }
+        .hvh-summary .pr-avatar {
+            width: 24px; height: 24px; border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+        .hvh-summary-name { font-weight: 700; flex: 1; font-size: 14px; }
+        .hvh-summary-edit { font-size: 11px; color: var(--color-text-muted); }
+        .hvh-step.collapsed .player-radio-grid { display: none; }
+        .hvh-step.collapsed .hvh-summary { display: flex; }
+        .hvh-step.collapsed .hvh-step-label { font-size: 10px; opacity: 0.65; margin-bottom: 4px; }
+        .hvh-step.collapsed { margin-top: 8px; }
+
+        /* Smartphone: the player selection OWNS the screen (~70%); the time and
+           side options shrink to a compact footer. The modal is a fixed flex
+           column — only the two player lists scroll, never the whole modal. */
+        @media (max-width: 600px) {
+            #hvhModal .modal-box {
+                gap: 10px;
+                overflow: hidden;
+            }
+            #hvhModal .modal-box h3 { flex: 0 0 auto; font-size: 18px; }
+            #hvhModal .hvh-players {
+                flex: 1 1 auto;
+                min-height: 0;
+                gap: 10px;
+            }
+            #hvhModal .hvh-players .form-group {
+                display: flex;
+                flex-direction: column;
+                min-height: 0;
+            }
+            #hvhModal .hvh-players .player-radio-grid {
+                flex: 1 1 auto;
+                min-height: 0;
+                max-height: none;
+                overflow-y: auto;
+                gap: 8px;
+                align-content: start;
+            }
+            #hvhModal .player-radio-tile {
+                padding: 14px 12px;
+                font-size: 15px;
+                border-radius: 12px;
+            }
+            #hvhModal .player-radio-tile .pr-avatar {
+                width: 30px; height: 30px; font-size: 16px;
+            }
+            #hvhModal .hvh-primary-label {
+                font-size: 12px !important;
+                margin-bottom: 6px;
+            }
+            /* Compact footer for the subordinate options. */
+            #hvhModal .hvh-secondary {
+                flex: 0 0 auto;
+                padding-top: 10px;
+                gap: 8px;
+            }
+            #hvhModal .hvh-secondary > .form-group > label {
+                font-size: 10px;
+                margin-bottom: 4px;
+            }
+            #hvhModal .hvh-secondary .option-group.pills { gap: 4px; }
+            #hvhModal .hvh-secondary .option-group.pills .toggle-btn.pill {
+                flex: 1 1 0;
+                min-width: 0;
+                padding: 8px 4px;
+                font-size: 11px;
+            }
+            #hvhModal .modal-actions { flex: 0 0 auto; padding-top: 8px; }
+        }
+
         /* Modal action buttons — properly tappable on phones. */
         #hvhModal .modal-actions,
         #botModal .modal-actions {
@@ -473,47 +609,54 @@
             <div class="modal-box">
                 <h3 style="margin-top:0;">Neues Spiel</h3>
 
-                <div class="hvh-players">
-                    <div class="form-group">
-                        <label>Spieler 1</label>
-                        <div class="player-radio-grid" id="hvhP1"></div>
-                    </div>
-                    <div class="form-group">
-                        <label>Spieler 2</label>
-                        <div class="player-radio-grid" id="hvhP2"></div>
-                    </div>
+                <!-- Step 1: pick Spieler 1 (always shown; collapses to a chip once chosen) -->
+                <div class="hvh-step revealed" id="hvhStep1">
+                    <label class="hvh-step-label">① Spieler 1</label>
+                    <div class="hvh-summary" id="hvhP1Summary" onclick="_editPlayerStep('hvhStep1')"></div>
+                    <div class="player-radio-grid hvh-big" id="hvhP1"></div>
                 </div>
 
-                <div class="form-group">
-                    <label>Zeit pro Spieler</label>
-                    <div class="option-group pills" id="hvhTime">
-                        <button type="button" class="toggle-btn pill" data-ms="60000">1m</button>
-                        <button type="button" class="toggle-btn pill" data-ms="180000">3m</button>
-                        <button type="button" class="toggle-btn pill" data-ms="300000">5m</button>
-                        <button type="button" class="toggle-btn pill active" data-ms="600000">10m</button>
-                        <button type="button" class="toggle-btn pill" data-ms="900000">15m</button>
-                        <button type="button" class="toggle-btn pill" data-ms="1800000">30m</button>
-                        <button type="button" class="toggle-btn pill" data-ms="0">∞</button>
-                    </div>
+                <!-- Step 2: pick Spieler 2 (revealed after Spieler 1) -->
+                <div class="hvh-step" id="hvhStep2">
+                    <label class="hvh-step-label">② Spieler 2</label>
+                    <div class="hvh-summary" id="hvhP2Summary" onclick="_editPlayerStep('hvhStep2')"></div>
+                    <div class="player-radio-grid hvh-big" id="hvhP2"></div>
                 </div>
 
-                <div class="form-group">
-                    <label>Farbverteilung</label>
-                    <div class="option-group pills" id="hvhColor">
-                        <button type="button" class="toggle-btn pill" data-color="white">P1 weiss</button>
-                        <button type="button" class="toggle-btn pill" data-color="black">P1 schwarz</button>
-                        <button type="button" class="toggle-btn pill active" data-color="random">Zufall</button>
+                <!-- Step 3: time + side + start (revealed after Spieler 2) -->
+                <div class="hvh-step" id="hvhStep3">
+                    <div class="hvh-secondary">
+                        <div class="form-group">
+                            <label>Zeit pro Spieler</label>
+                            <div class="option-group pills" id="hvhTime">
+                                <button type="button" class="toggle-btn pill" data-ms="60000">1m</button>
+                                <button type="button" class="toggle-btn pill" data-ms="180000">3m</button>
+                                <button type="button" class="toggle-btn pill" data-ms="300000">5m</button>
+                                <button type="button" class="toggle-btn pill active" data-ms="600000">10m</button>
+                                <button type="button" class="toggle-btn pill" data-ms="900000">15m</button>
+                                <button type="button" class="toggle-btn pill" data-ms="1800000">30m</button>
+                                <button type="button" class="toggle-btn pill" data-ms="0">∞</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Farbe · wer beginnt</label>
+                            <div class="option-group pills" id="hvhColor">
+                                <button type="button" class="toggle-btn pill" data-color="white">P1 weiss</button>
+                                <button type="button" class="toggle-btn pill" data-color="black">P1 schwarz</button>
+                                <button type="button" class="toggle-btn pill active" data-color="random">Zufall</button>
+                            </div>
+                        </div>
                     </div>
+                    <button type="button" onclick="startHvHFromModal()" class="button"
+                            style="margin:14px 0 0;width:100%;padding:16px;font-size:18px;font-weight:700;">
+                        ▶ Spiel starten
+                    </button>
                 </div>
 
                 <div class="modal-actions">
                     <button type="button" onclick="cancelHvHModal()"
                             class="back-button" style="margin:0; flex:1;">
                         Abbrechen
-                    </button>
-                    <button type="button" onclick="startHvHFromModal()"
-                            class="button" style="margin:0; flex:1;">
-                        Start
                     </button>
                 </div>
             </div>
@@ -638,12 +781,10 @@
                     const fillGrid = (grid, idx) => {
                         const name = grid.id + '_radio';
                         grid.innerHTML = list.map((p, i) => {
-                            const pr = primaryRating(p);
-                            const eloChip = pr
-                                ? '<span class="pr-meta">' +
-                                    escText(pr[0]) + ' ' + pr[1] +
-                                  '</span>'
-                                : '';
+                            // Show the WIN/LOSS record stored on the board instead of an ELO.
+                            const wins   = (p.stats && p.stats.wins)   || 0;
+                            const losses = (p.stats && p.stats.losses) || 0;
+                            const eloChip = '<span class="pr-meta">✓ ' + wins + ' · ✗ ' + losses + '</span>';
                             return (
                                 '<label class="player-radio-tile' +
                                     (i === idx ? ' active' : '') + '">' +
@@ -669,6 +810,11 @@
                                 grid.querySelectorAll('.player-radio-tile')
                                     .forEach(t => t.classList.toggle('active',
                                                                      t.contains(r) && r.checked));
+                                if (grid.id === 'hvhP1' || grid.id === 'hvhP2') _syncHvHExclusivity();
+                                // Wizard: collapse this picker to a compact chip and
+                                // reveal the next step once a side is chosen.
+                                if (grid.id === 'hvhP1') { _collapsePlayerStep('hvhStep1', 'hvhP1', 'hvhP1Summary'); _revealStep('hvhStep2'); }
+                                if (grid.id === 'hvhP2') { _collapsePlayerStep('hvhStep2', 'hvhP2', 'hvhP2Summary'); _revealStep('hvhStep3'); }
                             }));
                     };
                     (targetIds || [['hvhP1', 0], ['hvhP2', 1]]).forEach(([id, i]) => {
@@ -696,8 +842,79 @@
         wireToggleGroup('botDiff');
         wireToggleGroup('botColor');
 
+        // A player chosen for one side is disabled on the other side, so the same
+        // profile can't be picked twice. If that disables a side's current choice,
+        // it hops to the first still-available profile.
+        function _syncHvHExclusivity() {
+            const g1 = document.getElementById('hvhP1');
+            const g2 = document.getElementById('hvhP2');
+            if (!g1 || !g2) return;
+            const apply = (grid, blockVal) => {
+                const wasChecked = grid.querySelector('input[type="radio"]:checked');
+                grid.querySelectorAll('.player-radio-tile').forEach(t => {
+                    const input = t.querySelector('input[type="radio"]');
+                    if (!input) return;
+                    const dis = !!blockVal && input.value === blockVal;
+                    input.disabled = dis;
+                    t.classList.toggle('disabled', dis);
+                });
+                if (wasChecked && wasChecked.disabled) {
+                    const firstFree = grid.querySelector('input[type="radio"]:not([disabled])');
+                    if (firstFree) _setGridValue(grid, firstFree.value);
+                }
+            };
+            apply(g2, _gridValue(g1));   // block P1's pick in P2
+            apply(g1, _gridValue(g2));   // block P2's pick in P1
+        }
+
+        // Collapse a chosen player picker to a compact chip at the top.
+        function _collapsePlayerStep(stepId, gridId, summaryId) {
+            const step = document.getElementById(stepId);
+            const grid = document.getElementById(gridId);
+            const summary = document.getElementById(summaryId);
+            if (!step || !grid || !summary) return;
+            const tile = grid.querySelector('.player-radio-tile.active');
+            if (!tile) return;
+            const av  = tile.querySelector('.pr-avatar');
+            const nm  = tile.querySelector('.pr-name');
+            summary.innerHTML = '';
+            const a = document.createElement('span');
+            a.className = 'pr-avatar';
+            a.style.background = av ? av.style.background : '#444';
+            a.style.color = '#fff';
+            a.textContent = av ? av.textContent : '♟';
+            const n = document.createElement('span');
+            n.className = 'hvh-summary-name';
+            n.textContent = nm ? nm.textContent.trim() : '';
+            const e = document.createElement('span');
+            e.className = 'hvh-summary-edit';
+            e.textContent = 'ändern ✎';
+            summary.appendChild(a); summary.appendChild(n); summary.appendChild(e);
+            step.classList.add('collapsed');
+        }
+        // Re-open a collapsed picker so the player can change their choice.
+        function _editPlayerStep(stepId) {
+            const step = document.getElementById(stepId);
+            if (step) step.classList.remove('collapsed');
+        }
+
+        // Reveal a wizard step (Spieler 2, then the options + start) with a scroll.
+        function _revealStep(id) {
+            const el = document.getElementById(id);
+            if (!el || el.classList.contains('revealed')) return;
+            el.classList.add('revealed');
+            setTimeout(function () { try { el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (_) {} }, 60);
+        }
+
         function showHvHModal() {
-            loadProfiles([['hvhP1', 0], ['hvhP2', 1]]);
+            // Reset the wizard: only Spieler 1 visible (expanded), nothing pre-selected.
+            ['hvhStep2', 'hvhStep3'].forEach(function (id) {
+                const e = document.getElementById(id); if (e) e.classList.remove('revealed');
+            });
+            ['hvhStep1', 'hvhStep2'].forEach(function (id) {
+                const e = document.getElementById(id); if (e) e.classList.remove('collapsed');
+            });
+            loadProfiles([['hvhP1', -1], ['hvhP2', -1]]).then(_syncHvHExclusivity);
             document.getElementById('hvhModal').classList.add('visible');
         }
 

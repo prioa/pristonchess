@@ -61,7 +61,9 @@ void WiFiManagerESP32::begin() {
     Serial.println("- SSID: " + profiles[0].ssid);
     Serial.println("- Password: " + profiles[0].password);
     Serial.println("- Website: http://" MDNS_HOSTNAME ".local (" + WiFi.localIP().toString() + ")");
-    if (boardDriver) boardDriver->showBootMessage("WIFI OK", LedColors::Green);
+    // No boot marquee on success — when everything is OK the board boots
+    // straight into the idle screen. The scrolling status text is reserved for
+    // problems (AP fallback / AP error below, and FS/NVS errors in setup()).
   } else {
     bool apOk = startAPFallback();
     Serial.println("A WiFi Access Point was created:");
@@ -401,6 +403,92 @@ void WiFiManagerESP32::begin() {
     request->send(200, "text/plain", "running");
     boardDriver->ledRgbSequenceTest();
   });
+  // Reset the LED pixel-index map to the default straight wiring (persisted).
+  // Fixes a wrong/offset LED highlight caused by a bad sensor-driven calibration.
+  server.on("/debug/led-map-reset", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    boardDriver->resetLedMapToDefault();
+    request->send(200, "text/plain", "LED map reset to default straight wiring");
+  });
+  // Rematch after a Human-vs-Human game: start a fresh game with the SAME two
+  // players but colours swapped, reusing the same time control. The main loop
+  // picks up gameMode just like a normal /gameselect (even from the post-game
+  // hold), so the new game starts right away.
+  server.on("/rematch", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    if (hvhWhiteId.length() == 0 && hvhBlackId.length() == 0) {
+      request->send(409, "text/plain", "no previous HvH players");
+      return;
+    }
+    String tmp = hvhWhiteId; hvhWhiteId = hvhBlackId; hvhBlackId = tmp;  // swap sides
+    gameMode = "1";
+    Serial.printf("Rematch (colours swapped): white=%s black=%s time=%lums\n",
+                  hvhWhiteId.c_str(), hvhBlackId.c_str(), (unsigned long)hvhTimeLimitMs);
+    request->send(200, "text/plain", "rematch");
+  });
+  // Live preview of the pickup-reveal effect with the current settings (for the
+  // settings page — play it on the idle board while sliders are being adjusted).
+  server.on("/board-preview", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    boardDriver->requestRevealPreview();
+    request->send(200, "text/plain", "preview");
+  });
+  server.on("/board-preview-shiny", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    bool on = true;   // default: turn it on; pass ?on=0 to switch off
+    if (request->hasParam("on")) on = request->getParam("on")->value() != "0";
+    boardDriver->setShinyPreview(on);
+    request->send(200, "text/plain", on ? "on" : "off");
+  });
+  server.on("/board-preview-loop", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    bool on = true;   // endless pickup-reveal preview toggle; ?on=0 stops it
+    if (request->hasParam("on")) on = request->getParam("on")->value() != "0";
+    boardDriver->setRevealLoop(on);
+    request->send(200, "text/plain", on ? "on" : "off");
+  });
+  // LED-map recovery tooling (no sensors): light one RAW strip pixel to read off
+  // the wiring by eye, then push the reconstructed map.
+  server.on("/debug/led-raw", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    int i = request->hasParam("i") ? request->getParam("i")->value().toInt() : -2;
+    boardDriver->setDiagRawPixel(i);
+    request->send(200, "text/plain", String("diag raw pixel = ") + i);
+  });
+  server.on("/debug/led-map-exit", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    boardDriver->setDiagRawPixel(-2);
+    request->send(200, "text/plain", "diag off (idle animation resumed)");
+  });
+  // Brightness headroom test: GET /debug/brightness-test?lum=N (0..255) shows
+  // all-white at luminance N (bypasses the safety cap). lum<0 or omitted = off.
+  server.on("/debug/brightness-test", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    int lum = request->hasParam("lum") ? request->getParam("lum")->value().toInt() : -1;
+    if (lum > 255) lum = 255;
+    boardDriver->setBrightnessTest(lum);
+    request->send(200, "text/plain", lum >= 0
+                  ? (String("all-white @ luminance ") + lum + " (~" + (lum * 100 / 255) + "%) — Spannung am Strip-Ende messen")
+                  : "brightness test off");
+  });
+  // Body = 64 comma/space-separated pixel indices (row-major a8..h8, a7.., a1..h1).
+  server.on(
+      "/debug/led-map-set", HTTP_POST,
+      [](AsyncWebServerRequest* request) {},
+      NULL,
+      [this](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
+        static String body;
+        if (index == 0) body = "";
+        for (size_t i = 0; i < len; i++) body += (char)data[i];
+        if (index + len == total) {
+          uint8_t flat[LED_COUNT];
+          int count = 0, val = 0;
+          bool have = false;
+          for (size_t i = 0; i <= body.length(); i++) {
+            char c = (i < body.length()) ? body[i] : ',';
+            if (c >= '0' && c <= '9') { val = val * 10 + (c - '0'); have = true; }
+            else if (have) { if (count < LED_COUNT) flat[count] = (uint8_t)val; count++; val = 0; have = false; }
+          }
+          if (count == LED_COUNT && boardDriver->setLedMap(flat, LED_COUNT)) {
+            boardDriver->setDiagRawPixel(-2);
+            request->send(200, "text/plain", "LED map updated and persisted");
+          } else {
+            request->send(400, "text/plain", String("Invalid map: count=") + count + " (need exactly 64 unique values 0..63)");
+          }
+        }
+      });
   // OTA update endpoints
   server.on("/ota/status", HTTP_GET, [this](AsyncWebServerRequest* request) { this->handleOtaStatus(request); });
   server.on("/ota/settings", HTTP_POST, [this](AsyncWebServerRequest* request) { this->handleOtaSettings(request); });
@@ -463,6 +551,12 @@ String WiFiManagerESP32::getBoardUpdateJSON() {
   // mirrors the actually active mode via setActiveGameMode().
   doc["mode"] = activeGameMode;
   doc["simManual"] = simManualMode;
+
+  // Transient physical sound events (pickup / wrong-turn pickup). The client
+  // plays each new sndSeq once. char 0 -> empty string.
+  doc["sndEvent"] = soundEvent ? String((char)soundEvent) : String("");
+  doc["sndPiece"] = soundPiece ? String((char)soundPiece) : String("");
+  doc["sndSeq"]   = soundEventSeq;
 
   // Current-game metadata so board.html can render a header like
   // "HvH: Benny vs Rene" or "Bot: Schwer, du als Weiss" without polling
@@ -927,6 +1021,17 @@ String WiFiManagerESP32::getBoardSettingsJSON() {
   doc["replayOverlayPct"] = boardDriver->getReplayOverlayPct();
   doc["dimOthersOnPickup"] = boardDriver->getDimOthersOnPickup();
   doc["dimOthersPct"]      = boardDriver->getDimOthersPct();
+  doc["revealRingMs"]      = boardDriver->getRevealRingMs();
+  doc["revealPauseMs"]     = boardDriver->getRevealPauseMs();
+  doc["revealSequential"]  = boardDriver->getRevealSequential();
+  doc["noobBudgetMs"]      = boardDriver->getNoobBudgetMs();
+  doc["afterWalkMs"]       = boardDriver->getAfterWalkMs();
+  doc["rayGhostVal"]       = boardDriver->getRayGhostVal();
+  doc["shinySweepMs"]      = boardDriver->getShinySweepMs();
+  doc["shinyPauseMs"]      = boardDriver->getShinyPauseMs();
+  LedRGB shc = boardDriver->getShinyColor();
+  snprintf(colorHex, sizeof(colorHex), "#%02x%02x%02x", shc.r, shc.g, shc.b);
+  doc["shinyColor"]        = colorHex;
   String output;
   serializeJson(doc, output);
   return output;
@@ -1096,6 +1201,41 @@ void WiFiManagerESP32::handleBoardSettings(AsyncWebServerRequest* request) {
     boardDriver->setDimOthersPct((uint8_t)request->arg("dimOthersPct").toInt());
     changed = true;
   }
+  if (request->hasArg("revealRingMs")) {
+    boardDriver->setRevealRingMs((uint16_t)request->arg("revealRingMs").toInt());
+    changed = true;
+  }
+  if (request->hasArg("revealPauseMs")) {
+    boardDriver->setRevealPauseMs((uint16_t)request->arg("revealPauseMs").toInt());
+    changed = true;
+  }
+  if (request->hasArg("noobBudgetMs"))
+    boardDriver->setNoobBudgetMs((uint16_t)request->arg("noobBudgetMs").toInt());
+  if (request->hasArg("revealSequential")) {
+    String v = request->arg("revealSequential");
+    boardDriver->setRevealSequential(v == "1" || v == "true");
+    changed = true;
+  }
+  if (request->hasArg("afterWalkMs")) {
+    boardDriver->setAfterWalkMs((uint16_t)request->arg("afterWalkMs").toInt());
+    changed = true;
+  }
+  if (request->hasArg("rayGhostVal")) {
+    boardDriver->setRayGhostVal((uint8_t)request->arg("rayGhostVal").toInt());
+    changed = true;
+  }
+  if (request->hasArg("shinySweepMs")) {
+    boardDriver->setShinySweepMs((uint16_t)request->arg("shinySweepMs").toInt());
+    changed = true;
+  }
+  if (request->hasArg("shinyPauseMs")) {
+    boardDriver->setShinyPauseMs((uint16_t)request->arg("shinyPauseMs").toInt());
+    changed = true;
+  }
+  if (request->hasArg("shinyColor")) {
+    LedRGB c;
+    if (parseHexColor(request->arg("shinyColor"), c)) { boardDriver->setShinyColor(c); changed = true; }
+  }
 
   if (changed) {
     boardDriver->saveLedSettings();
@@ -1117,6 +1257,7 @@ void WiFiManagerESP32::handleDebugState(AsyncWebServerRequest* request) {
   doc["calibrated"] = boardDriver->isCalibrated();
   doc["freeHeap"] = ESP.getFreeHeap();
   doc["uptime"] = millis() / 1000;
+  doc["tempC"] = temperatureRead();  // interner Die-Sensor (Chip-Temp, nicht Umgebung)
   JsonArray sensors = doc["sensors"].to<JsonArray>();
   JsonArray sensorsRaw = doc["sensorsRaw"].to<JsonArray>();
   JsonArray leds = doc["leds"].to<JsonArray>();
@@ -1240,9 +1381,39 @@ LichessConfig WiFiManagerESP32::getLichessConfig() {
   return config;
 }
 
+void WiFiManagerESP32::setGameStatus(const GameStatusData& gs) {
+  bool meaningfulChange =
+      gs.turn         != _gameStatus.turn         ||
+      gs.inCheck      != _gameStatus.inCheck      ||
+      gs.gameOver     != _gameStatus.gameOver     ||
+      gs.winnerColor  != _gameStatus.winnerColor  ||
+      gs.whiteFlagged != _gameStatus.whiteFlagged ||
+      gs.blackFlagged != _gameStatus.blackFlagged;
+  _gameStatus = gs;
+  // Broadcast the fresh turn/check/clock the instant they change, so the web
+  // app reflects them right after the move instead of one move later. The
+  // payload also carries the current FEN (already updated by the move's
+  // updateBoardState call), so position and status stay in sync. Clock-only
+  // changes don't broadcast — the client interpolates those locally.
+  if (meaningfulChange && boardEvents.count() > 0) {
+    boardEvents.send(getBoardUpdateJSON().c_str(), "board", millis());
+  }
+}
+
 void WiFiManagerESP32::updateBoardState(const String& fen, float evaluation) {
   currentFen = fen;
   boardEvaluation = evaluation;
+  // Keep the turn indicator in sync with the position being pushed. The FEN's
+  // side-to-move field is authoritative and arrives the instant the move is
+  // applied (via the early push in applyMove), so the web clock switches to the
+  // opponent immediately — instead of after the ~1 s LED animation, when the
+  // next loop-top setGameStatus() would otherwise be the first to carry the new
+  // turn. Without this the mover's clock kept ticking through the animation.
+  int sp = fen.indexOf(' ');
+  if (sp > 0 && sp + 1 < (int)fen.length()) {
+    char t = fen.charAt(sp + 1);
+    if (t == 'w' || t == 'b') _gameStatus.turn = t;
+  }
   // Broadcast to all connected SSE clients (board.html). Cheap because
   // updates fire ~once per half-move, not per polling tick.
   if (boardEvents.count() > 0) boardEvents.send(getBoardUpdateJSON().c_str(), "board", millis());

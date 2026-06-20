@@ -69,10 +69,21 @@ class ChessLearning : public ChessGame {
   bool _lessonCompleted;
   bool _hintsShown;
   bool _inErrorState;
+  // Capture latch: a move onto an already-occupied square (a capture) is only
+  // accepted once the to-square has been observed EMPTY (captured piece lifted)
+  // — otherwise the move would commit prematurely the instant the capturing
+  // piece is picked up (to-square still holds the victim). Reset per ply.
+  bool _captureCleared;
 
   void _parseSequence();
   void _showHintsForCurrentMove();
   bool _boardMatchesLogical() const;
   void _resetLesson();
   void _commitCurrentMove();
+  // Build, for the current target move, the squares legitimately involved in
+  // the move (so the wrong-square guard ignores them — castling rook, en
+  // passant victim, capture victim) and the expected post-move occupancy grid
+  // (true = should hold a piece once the move is complete). isCaptureOut is set
+  // when the destination square is occupied before the move (a real capture).
+  void _moveMasks(bool involved[8][8], bool expectOcc[8][8], bool& isCaptureOut) const;
 };

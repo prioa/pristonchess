@@ -38,6 +38,20 @@ class ChessGame {
   char _endReason   = ' ';
   char _playerNameWhite[32] = "";
   char _playerNameBlack[32] = "";
+  // Per-game player colours (HvH: each player's profile colour). When set, the
+  // glow / move-trail / move-highlights derive from these instead of the global
+  // animPath colours. _pcSet stays false for bot/lichess → unchanged behaviour.
+  LedRGB _pcWhite{0, 0, 0};
+  LedRGB _pcBlack{0, 0, 0};
+  bool   _pcSet = false;
+
+  // When true, the next renderBoardLEDs() fades the resting glow in from black
+  // (a smooth game-start reveal) instead of snapping it on. Set in initializeBoard().
+  bool   _glowFadePending = false;
+
+  // millis() of the last turn switch — the shiny turn-indicator cross-fades the
+  // glint from the old side to the new side over a short window after this.
+  uint32_t _shinyTurnSwitchMs = 0;
 
   // Concatenated UCI move history ("e2e4 c7c5 g1f3 …") — used to
   // resolve the opening name. Capped at 12 plies to keep the buffer
@@ -83,6 +97,25 @@ class ChessGame {
   // off) — the "resting glow" that shows where the pieces stand. Used by the
   // simulation and the Human-vs-Human mode between moves.
   void renderBoardLEDs();
+  // Re-illuminate the resting glow as a WAVE radiating out from (originRow,
+  // originCol) — used at placement so the pieces dimmed during the pickup
+  // brighten back up in a ripple instead of snapping on.
+  void renderBoardLEDsWave(int originRow, int originCol);
+  // Shiny-aware resting glow for one square (turn-indicator glint + opponent
+  // dim baked in). Shared by renderBoardLEDs() and the placement wave so the
+  // wave settles straight into the shiny state — no separate "brighten then
+  // glint" step.
+  LedRGB shinyGlowAt(int row, int col);
+  // Resting render for the between-moves state: renders renderBoardLEDs() but,
+  // while the shiny glint is mid-sweep, bursts extra frames at a high rate so a
+  // fast sweep doesn't stutter at the slow main-loop tick rate.
+  void renderRestingFrame();
+
+  // One-shot LED preview of a piece's reachable squares, for modes WITHOUT a
+  // physical pickup loop (simulation): all reachable squares glow dim, every
+  // other piece stays at full player-colour glow, and — in noob mode — a bright
+  // point traces each option in turn (budget-timed). Blocks for ~one cycle.
+  void previewReachable(int srcR, int srcC, int moves[][2], int moveCount, char piece);
 
   // Read-only accessors for non-game subsystems (board driver, web UI).
   char getCurrentTurn() const { return currentTurn; }
@@ -93,6 +126,10 @@ class ChessGame {
   // Player display names used in the win cinematic. Default empty falls back
   // to "WEISS" / "SCHWARZ" in the firmware text scroller.
   void setPlayerNames(const char* white, const char* black);
+  // Set per-game player colours (e.g. HvH from profile colours). Enables
+  // player-colour-derived glow + move highlights for this game instance.
+  void setPlayerColors(LedRGB white, LedRGB black) { _pcWhite = white; _pcBlack = black; _pcSet = true; }
+  bool hasPlayerColors() const { return _pcSet; }
   const char* getPlayerName(char color) const { return color == 'w' ? _playerNameWhite : _playerNameBlack; }
   const char (&getBoard() const)[8][8] { return board; }
   char getWinnerColor() const { return _winnerColor; }

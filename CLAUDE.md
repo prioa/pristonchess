@@ -85,7 +85,12 @@ prüfen“ → „Anwenden“, oder Auto-Update aktiviert → Brett holt es beim
 ```bash
 pio run                                              # baut firmware.bin + data/
 cp .pio/build/nodemcu-32s/firmware.bin firmware.bin
-( cd data && tar -cf ../web_assets.tar * )           # Tar OHNE führendes ./
+# WICHTIG auf macOS: --no-mac-metadata --no-xattrs + COPYFILE_DISABLE=1,
+# sonst packt bsdtar unsichtbare AppleDouble- (._*) und PaxHeader-Einträge mit
+# ein. `tar -tf` versteckt die, aber der ESP32-OTA-Parser extrahiert sie als
+# echte Dateien → LittleFS läuft voll, große Dateien (jquery/chess.js) werden
+# still abgeschnitten → board.html bleibt leer (ReferenceError: $ undefined).
+( cd data && COPYFILE_DISABLE=1 tar --no-mac-metadata --no-xattrs -cf ../web_assets.tar * )  # OHNE ./-Präfix
 ```
 
 Dann auf GitHub ein Release mit Tag `vX.Y.Z` anlegen und `firmware.bin` +

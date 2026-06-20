@@ -114,6 +114,14 @@ String Profiles::nameForId(const char* id) {
     return String(n);
 }
 
+String Profiles::colorForId(const char* id) {
+    if (!id || !*id) return String("");
+    JsonObject p = _findProfile(id);
+    if (p.isNull()) return String("");
+    const char* c = p["color"] | "";
+    return String(c);
+}
+
 void Profiles::leaderboard(LeaderEntry* out, uint8_t maxCount, uint8_t& outCount) {
     outCount = 0;
     if (!out || maxCount == 0) return;
@@ -150,6 +158,14 @@ bool Profiles::_save() {
     String out;
     serializeJson(_doc, out);
     size_t written = _prefs.putString(NVS_KEY, out);
+    if (written == 0) {
+        // Overwriting an existing key can fail when NVS can't briefly hold the
+        // OLD + NEW copy at once (fragmentation). Free the old entry first, then
+        // retry — this reclaims the space and lets the write through. Without it,
+        // profile edits (e.g. player colours) silently don't persist across reboot.
+        _prefs.remove(NVS_KEY);
+        written = _prefs.putString(NVS_KEY, out);
+    }
     if (written == 0) {
         Serial.printf("[PROF] NVS write failed (size=%u)\n", (unsigned)out.length());
         return false;
@@ -238,11 +254,11 @@ String Profiles::apply(const String& body) {
         JsonObject p = _findProfile(id);
         if (p.isNull()) return "";
         if (!req["name"].isNull()) {
-            const char* newName = req["name"];
-            if (newName && *newName) p["name"] = newName;
+            String newName = req["name"].as<String>();
+            if (newName.length()) p["name"] = newName;  // copy into _doc
         }
-        if (!req["avatar"].isNull()) p["avatar"] = (const char*)req["avatar"];
-        if (!req["color"].isNull())  p["color"]  = (const char*)req["color"];
+        if (!req["avatar"].isNull()) p["avatar"] = req["avatar"].as<String>();  // copy into _doc (not a ptr into req)
+        if (!req["color"].isNull())  p["color"]  = req["color"].as<String>();
         if (!req["chesscom"].isNull()) {
             const char* h = req["chesscom"];
             p["chesscom"] = h ? h : "";

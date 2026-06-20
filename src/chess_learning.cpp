@@ -72,7 +72,8 @@ ChessLearning::ChessLearning(BoardDriver* bd, ChessEngine* ce, WiFiManagerESP32*
       _restartRequested(false),
       _lessonCompleted(false),
       _hintsShown(false),
-      _inErrorState(false) {}
+      _inErrorState(false),
+      _captureCleared(false) {}
 
 void ChessLearning::configure(int openingIdx, int level, char playerColor) {
   if (openingIdx < 0 || (size_t)openingIdx >= LEARN_OPENINGS_COUNT) openingIdx = 0;
@@ -149,18 +150,30 @@ void ChessLearning::update() {
   // iteration so setActiveGameMode etc. keep ticking and the web UI stays
   // responsive while we wait for the player to move the magnet.
   boardDriver->readSensors();
+
+  // Compute the squares legitimately involved in this move and the expected
+  // board occupancy once it's complete. This makes captures, castling and en
+  // passant detect correctly — previously a capture committed the instant the
+  // capturing piece was lifted (destination still held the victim) and a
+  // castle flagged the rook squares as "wrong square".
+  bool involved[8][8];
+  bool expectOcc[8][8];
+  bool isCapture = false;
+  _moveMasks(involved, expectOcc, isCapture);
+
+  // Latch: for a capture, remember once the destination has been emptied
+  // (victim physically lifted). Only then may the move complete.
   const TargetMove& tm = _targetMoves[_curPlie];
+  if (isCapture && !boardDriver->getSensorState(tm.toRow, tm.toCol)) {
+    _captureCleared = true;
+  }
 
-  bool fromEmpty   = !boardDriver->getSensorState(tm.fromRow, tm.fromCol);
-  bool toOccupied  = boardDriver->getSensorState(tm.toRow,   tm.toCol);
-
-  // Scan for any sensor that deviates from the expected pre-move state,
-  // ignoring the from-/to-square of the target move.
+  // Scan for any NON-involved sensor that deviates from the expected pre-move
+  // state — that means the player touched a square outside the target move.
   int errRow = -1, errCol = -1;
   for (int r = 0; r < 8 && errRow < 0; r++) {
     for (int c = 0; c < 8; c++) {
-      if (r == tm.fromRow && c == tm.fromCol) continue;
-      if (r == tm.toRow   && c == tm.toCol)   continue;
+      if (involved[r][c]) continue;
       bool shouldHave = (board[r][c] != ' ');
       bool hasIt = boardDriver->getSensorState(r, c);
       if (shouldHave != hasIt) {
@@ -195,11 +208,65 @@ void ChessLearning::update() {
     return;
   }
 
-  if (fromEmpty && toOccupied) {
+  // Move is complete when the WHOLE physical board matches the expected
+  // post-move occupancy. For a capture, additionally require the destination
+  // to have been emptied first (so lifting the capturing piece over a still-
+  // present victim doesn't commit early).
+  bool moveComplete = (!isCapture || _captureCleared);
+  for (int r = 0; r < 8 && moveComplete; r++) {
+    for (int c = 0; c < 8; c++) {
+      if (boardDriver->getSensorState(r, c) != expectOcc[r][c]) {
+        moveComplete = false;
+        break;
+      }
+    }
+  }
+
+  if (moveComplete) {
     _commitCurrentMove();
   }
 
   boardDriver->updateSensorPrev();
+}
+
+void ChessLearning::_moveMasks(bool involved[8][8], bool expectOcc[8][8],
+                               bool& isCaptureOut) const {
+  for (int r = 0; r < 8; r++) {
+    for (int c = 0; c < 8; c++) {
+      involved[r][c]  = false;
+      expectOcc[r][c] = (board[r][c] != ' ');
+    }
+  }
+  if (_curPlie >= _totalPlies) { isCaptureOut = false; return; }
+  const TargetMove& tm = _targetMoves[_curPlie];
+  char piece = board[tm.fromRow][tm.fromCol];
+
+  // The destination is occupied before the move → a real capture.
+  isCaptureOut = (board[tm.toRow][tm.toCol] != ' ');
+
+  involved[tm.fromRow][tm.fromCol] = true;
+  involved[tm.toRow][tm.toCol]     = true;
+  expectOcc[tm.fromRow][tm.fromCol] = false;
+  expectOcc[tm.toRow][tm.toCol]     = true;
+
+  // Castling: king steps two files on its home rank → the rook hops too.
+  if ((piece == 'K' || piece == 'k') && tm.fromRow == tm.toRow &&
+      (tm.toCol - tm.fromCol == 2 || tm.fromCol - tm.toCol == 2)) {
+    int rookFromCol = (tm.toCol > tm.fromCol) ? 7 : 0;
+    int rookToCol   = (tm.toCol > tm.fromCol) ? 5 : 3;
+    involved[tm.fromRow][rookFromCol] = true;
+    involved[tm.fromRow][rookToCol]   = true;
+    expectOcc[tm.fromRow][rookFromCol] = false;
+    expectOcc[tm.fromRow][rookToCol]   = true;
+  }
+
+  // En passant: a pawn moves diagonally onto an EMPTY square → the captured
+  // pawn sits on the moving pawn's own rank, on the destination file.
+  if ((piece == 'P' || piece == 'p') && tm.fromCol != tm.toCol &&
+      board[tm.toRow][tm.toCol] == ' ') {
+    involved[tm.fromRow][tm.toCol]  = true;
+    expectOcc[tm.fromRow][tm.toCol] = false;
+  }
 }
 
 void ChessLearning::_commitCurrentMove() {
@@ -211,6 +278,7 @@ void ChessLearning::_commitCurrentMove() {
   _curPlie++;
   _hintsShown = false;
   _inErrorState = false;
+  _captureCleared = false;
   wifiManager->updateBoardState(
       ChessUtils::boardToFEN(board, currentTurn, chessEngine),
       ChessUtils::evaluatePosition(board));
@@ -222,6 +290,7 @@ void ChessLearning::_resetLesson() {
   _lessonCompleted = false;
   _hintsShown = false;
   _inErrorState = false;
+  _captureCleared = false;
   gameOver = false;
   _winnerColor = '?';
   _endReason = ' ';

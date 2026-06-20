@@ -138,6 +138,16 @@ class WiFiManagerESP32 {
   char pendingResignColor;        // 'w' or 'b' — the side resigning
   char pendingManualWinner = '?'; // 'w' / 'b' / 'd' for manual game end
 
+  // Transient sound events for the web app. Physical-only events (piece lifted,
+  // wrong-turn pickup) aren't visible in the FEN, so the firmware publishes them
+  // here. board-update exposes {sndEvent, sndSeq, sndPiece}; the client plays
+  // each new seq once. 'P'=pickup, 'W'=wrong-turn pickup. sndPiece carries the
+  // lifted piece type ('P','N','B','R','Q','K') so the client can pick a
+  // piece-specific pickup sound. (place/capture stay FEN-derived client-side.)
+  volatile char     soundEvent    = 0;
+  volatile char     soundPiece    = 0;
+  volatile uint32_t soundEventSeq = 0;
+
   // Promotion state for web-based piece selection
   struct PromotionState {
     volatile bool pending; // True while waiting for web client to choose a piece
@@ -265,7 +275,13 @@ class WiFiManagerESP32 {
   // /board-update so the web client can tell whether a game is running.
   void setActiveGameMode(int mode) { activeGameMode = mode; }
   bool getSimManual() const { return simManualMode; }
-  void setGameStatus(const GameStatusData& gs) { _gameStatus = gs; }
+  // Store the latest game status and, when a meaningful field changed (turn,
+  // check, game-over, flag-fall), push it to SSE clients immediately. Without
+  // this the web only learns the new turn / check on the NEXT move's board
+  // broadcast — so a check appeared a full move late and the wrong clock kept
+  // ticking. Clock-only changes are NOT broadcast (the client interpolates
+  // those locally between updates).
+  void setGameStatus(const GameStatusData& gs);
   // Bot configuration
   BotConfig getBotConfig() { return botConfig; }
   // Human-vs-Human player profile IDs (white / black) for stats logging.
@@ -300,6 +316,14 @@ class WiFiManagerESP32 {
   bool getPendingManualEnd(char& winner);
   void clearPendingResign();
   void clearPendingDraw();
+  // Non-consuming peek: is a web resign/draw/abort queued but not yet processed?
+  // Blocking sensor-wait loops (board setup, player move, remote-move completion)
+  // poll this so a stuck game (e.g. dead Hall sensors) can still be aborted from
+  // the web — the main loop consumes and processes the actual end afterwards.
+  bool isEndRequested() const { return hasPendingResign || hasPendingDraw || hasPendingManualEnd; }
+  // Publish a transient sound event for the web app ('P'=pickup, 'W'=wrong-turn).
+  // piece: lifted piece type for piece-specific pickup sounds (0 = none).
+  void pushSoundEvent(char e, char piece = 0) { soundEvent = e; soundPiece = piece; soundEventSeq++; }
   // Promotion management (from web interface)
   void startPromotionWait(char color);
   bool isPromotionPending() const { return promotion.pending; }

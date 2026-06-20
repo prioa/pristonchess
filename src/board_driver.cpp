@@ -129,6 +129,11 @@ BoardDriver::BoardDriver() : strip(nullptr), lastEnabledCol(-2), brightness(BRIG
     }
 }
 
+// Max global LED luminance (0-255). This board's single-end-fed strip sags under
+// load; measured all-white headroom: lum=120 → 4.5V at the strip tail (safe,
+// >3.5V). 120 ≈ 47%. Raise once power is injected at both strip ends.
+static constexpr uint8_t MAX_SAFE_BRIGHTNESS = 120;
+
 void BoardDriver::beginHardware() {
   // Initialize animation queue system
   instance = this;
@@ -149,6 +154,12 @@ void BoardDriver::beginHardware() {
   strip = new NeoPixelBusLg<NeoGrbFeature, NeoEsp32Rmt1Ws2812xMethod, NeoGammaNullMethod>(LED_COUNT, hwConfig.ledPin);
   strip->Begin();
   loadLedSettings(); // Load LED settings from NVS (brightness, dim multiplier)
+  // Hard safety cap on global luminance. This board's LED strip is fed from one
+  // end only and the 5V sags badly under load (measured 4V at the head, 2V at the
+  // tail at full white) → above ~25% it browns out and boot-loops. Clamp here
+  // regardless of the stored/default brightness so a high or lost NVS value can't
+  // brick the boot. Raise MAX_SAFE_BRIGHTNESS once power is injected at both ends.
+  if (brightness > MAX_SAFE_BRIGHTNESS) brightness = MAX_SAFE_BRIGHTNESS;
   strip->SetLuminance(brightness);
   // Shift register pins as outputs
   pinMode(hwConfig.srDataPin, OUTPUT);
@@ -286,9 +297,11 @@ void BoardDriver::executeAnimation(const AnimationJob& job) {
     case AnimationType::SHIELDWALL:   doShieldwall(job.stopFlag);  break;
     case AnimationType::COURT:        doCourt(job.stopFlag);       break;
     case AnimationType::MOVE_PATH:
-      // Stash the player so doMovePath can pick the per-side trail colour /
-      // speed without changing its existing signature.
-      mphPlayer = job.params.path.player ? job.params.path.player : 'w';
+      // Stash the player + optional explicit colour so doMovePath can pick the
+      // trail colour / speed without changing its existing signature.
+      mphPlayer   = job.params.path.player ? job.params.path.player : 'w';
+      mphColor    = job.params.path.color;
+      mphUseColor = job.params.path.useColor;
       doMovePath(job.params.path.fromRow, job.params.path.fromCol,
                  job.params.path.toRow,   job.params.path.toCol);
       break;
@@ -296,6 +309,9 @@ void BoardDriver::executeAnimation(const AnimationJob& job) {
     case AnimationType::CHECKMATE_SPIRAL: doCheckmateSpiral(); break;
     case AnimationType::CHECKMATE_ANIM:   doCheckmateAnimation(); break;
     case AnimationType::MODE_CHANGE_TV:   doModeChangeTransition(); break;
+    case AnimationType::HEARTBEAT:
+      doHeartbeat(job.params.blink.row, job.params.blink.col, job.params.blink.color);
+      break;
     case AnimationType::CELL_PULSE:
       doCellPulse(job.params.blink.row, job.params.blink.col, job.params.blink.color);
       break;
@@ -351,9 +367,239 @@ bool BoardDriver::loadCalibration() {
   for (int row = 0; row < NUM_ROWS; row++)
     for (int col = 0; col < NUM_COLS; col++)
       ledIndexMap[row][col] = ledFlat[idx++];
+
+  // Validate the LED map: it must be a permutation of 0..LED_COUNT-1. A corrupt
+  // entry (out-of-range or duplicate) would crash the board on the next animation
+  // (SetPixelColor out of bounds) and/or light the wrong/neighbouring LED. Fall
+  // back to the default straight map rather than trusting a bad calibration.
+  bool seen[LED_COUNT] = {false};
+  bool validMap = true;
+  for (int row = 0; row < NUM_ROWS && validMap; row++)
+    for (int col = 0; col < NUM_COLS; col++) {
+      uint8_t v = ledIndexMap[row][col];
+      if (v >= LED_COUNT || seen[v]) { validMap = false; break; }
+      seen[v] = true;
+    }
+  if (!validMap) {
+    Serial.println("Board calibration LED map invalid (out-of-range/duplicate) — using default straight map");
+    for (int row = 0; row < NUM_ROWS; row++)
+      for (int col = 0; col < NUM_COLS; col++)
+        ledIndexMap[row][col] = DefaultRowColToLEDindexMap[row][col];
+  }
+
   prefs.end();
   Serial.println("Board calibration loaded from NVS");
   return true;
+}
+
+void BoardDriver::renderDiagPixel() {
+  // Light exactly one RAW strip pixel (no ledIndexMap) so we can read off the
+  // physical wiring by eye. Caller (main loop) must have stopped the idle
+  // animation first; we hold the mutex for the single draw.
+  acquireLEDs();
+  for (int i = 0; i < LED_COUNT; i++) strip->SetPixelColor(i, RgbColor(0));
+  int p = diagRawPixel;
+  if (p >= 0 && p < LED_COUNT) strip->SetPixelColor(p, RgbColor(140, 140, 140));
+  showLEDs();
+  releaseLEDs();
+}
+
+bool BoardDriver::setLedMap(const uint8_t* flat, int n) {
+  if (n != LED_COUNT) return false;
+  bool seen[LED_COUNT] = {false};
+  for (int i = 0; i < LED_COUNT; i++) {
+    if (flat[i] >= LED_COUNT || seen[flat[i]]) return false; // must be a permutation
+    seen[flat[i]] = true;
+  }
+  int idx = 0;
+  for (int row = 0; row < NUM_ROWS; row++)
+    for (int col = 0; col < NUM_COLS; col++)
+      ledIndexMap[row][col] = flat[idx++];
+  saveCalibration();
+  Serial.println("LED map set from web tool and persisted");
+  return true;
+}
+
+void BoardDriver::playRevealPreview() {
+  // Live preview of the pickup-reveal effect on a sample layout, using the
+  // CURRENT settings (reveal timing, dim, per-side colours). Caller stops the
+  // idle animation first. Blocks for ~2 cycles, then clears.
+  acquireLEDs();
+  const int sr = 4, sc = 3;                         // picked-up "piece" at the centre
+  LedRGB srcColor = animPathColorW;                 // white-side colour
+  float dimF = dimOthersOnPickup ? (dimOthersPct / 100.0f) : 1.0f;
+  const int slotMs = revealRingMs, REV_STEPS = 10, DIM_STEPS = 16;
+
+  // A few sample "other pieces" per side (kept low to limit current) so the dim
+  // and the player colours are visible during the preview.
+  const int NP = 8;
+  static const int pcs[NP][2] = {{0,2},{0,5},{1,3},{1,4},{7,2},{7,5},{6,3},{6,4}};
+
+  // Queen-ray targets radiating from the centre (blocked by sample pieces).
+  int tr[40], tc[40], td[40], n = 0, maxD = 0;
+  static const int dirs[8][2] = {{0,1},{0,-1},{1,0},{-1,0},{1,1},{1,-1},{-1,1},{-1,-1}};
+  for (int di = 0; di < 8; di++)
+    for (int k = 1; ; k++) {
+      int r = sr + dirs[di][0] * k, c = sc + dirs[di][1] * k;
+      if (r < 0 || r >= NUM_ROWS || c < 0 || c >= NUM_COLS) break;
+      bool occ = false;
+      for (int i = 0; i < NP; i++) if (pcs[i][0] == r && pcs[i][1] == c) occ = true;
+      if (occ) break;
+      tr[n] = r; tc[n] = c; td[n] = k; if (k > maxD) maxD = k; n++;
+    }
+
+  // Noob preview: keep every reachable square dimly lit; STAGGER a bright point
+  // down each option — option i starts noobBudgetMs after option i-1, all running
+  // concurrently (queen → many points racing out). A TOGGLE (revealLoopOn) loops
+  // it; otherwise it plays one sweep.
+  if (revealSequential) {
+    auto scale  = [](LedRGB c, float f) { return LedRGB{(uint8_t)(c.r*f),(uint8_t)(c.g*f),(uint8_t)(c.b*f)}; };
+    auto bright = [](LedRGB c, float f) { return LedRGB{(uint8_t)(c.r+(255-c.r)*f),(uint8_t)(c.g+(255-c.g)*f),(uint8_t)(c.b+(255-c.b)*f)}; };
+    LedRGB pointCol = LedRGB{255, 255, 255};
+    LedRGB floorC   = scale(srcColor, 0.14f);
+    int stagger = noobBudgetMs; if (stagger < 10) stagger = 10;
+    const int CELL_MS = 45, HOLD = 250;
+    bool oneShot = !revealLoopOn;
+    do {
+      unsigned long start = millis();
+      bool done = false;
+      while (!done && previewReq == false && (oneShot || revealLoopOn)) {
+        long t = (long)(millis() - start);
+        if (t > 9000) break;
+        clearAllLEDs(false);
+        for (int i = 0; i < NP; i++) setSquareLED(pcs[i][0], pcs[i][1], (pcs[i][0] < 4) ? animPathColorB : animPathColorW);
+        for (int i = 0; i < n; i++)  setSquareLED(tr[i], tc[i], floorC);
+        setSquareLED(sr, sc, srcColor);
+        done = true;
+        for (int i = 0; i < n; i++) {
+          long ot = t - (long)i * stagger;
+          if (ot < 0) { done = false; continue; }
+          int dr = (tr[i] > sr) - (tr[i] < sr), dc = (tc[i] > sc) - (tc[i] < sc);
+          int steps = td[i];
+          int cell = ot / CELL_MS;
+          if (cell < steps) { setSquareLED(sr + dr * cell, sc + dc * cell, pointCol); done = false; }
+          else if (ot - (long)steps * CELL_MS < HOLD) { setSquareLED(tr[i], tc[i], bright(srcColor, 0.35f)); done = false; }
+        }
+        showLEDs();
+        delay(16);
+      }
+      if (revealLoopOn && previewReq == false) delay(revealPauseMs);
+    } while (revealLoopOn && previewReq == false);
+    clearAllLEDs();
+    releaseLEDs();
+    return;
+  }
+
+  for (int cycle = 0; cycle < 2 && previewReq == false; cycle++) {
+    // Phase 1: pieces fade down to the dim level while the source pops.
+    for (int s = 1; s <= DIM_STEPS; s++) {
+      float t = (float)s / DIM_STEPS;
+      clearAllLEDs(false);
+      for (int i = 0; i < NP; i++) {
+        LedRGB p = (pcs[i][0] < 4) ? animPathColorB : animPathColorW;
+        float f = 1.0f - (1.0f - dimF) * t;
+        setSquareLED(pcs[i][0], pcs[i][1], LedRGB{(uint8_t)(p.r * f), (uint8_t)(p.g * f), (uint8_t)(p.b * f)});
+      }
+      setSquareLED(sr, sc, LedRGB{(uint8_t)(srcColor.r * t), (uint8_t)(srcColor.g * t), (uint8_t)(srcColor.b * t)});
+      showLEDs();
+      delay(22);
+    }
+    // Phase 2: reveal targets ring by ring (same distance together).
+    // Brightness rises with distance — the farthest ring is the brightest.
+    for (int d = 1; d <= maxD; d++) {
+      bool any = false;
+      for (int i = 0; i < n; i++) if (td[i] == d) any = true;
+      if (!any) continue;
+      float bri = (maxD > 1) ? (0.25f + 0.75f * (float)(d - 1) / (maxD - 1)) : 1.0f;
+      LedRGB ringCol = LedRGB{(uint8_t)(srcColor.r * bri), (uint8_t)(srcColor.g * bri), (uint8_t)(srcColor.b * bri)};
+      for (int s = 1; s <= REV_STEPS; s++) {
+        float t = (float)s / REV_STEPS;
+        for (int i = 0; i < n; i++)
+          if (td[i] == d) setSquareLED(tr[i], tc[i], LedRGB{(uint8_t)(ringCol.r * t), (uint8_t)(ringCol.g * t), (uint8_t)(ringCol.b * t)});
+        showLEDs();
+        delay(slotMs / REV_STEPS);
+      }
+      for (int i = 0; i < n; i++) if (td[i] == d) setSquareLED(tr[i], tc[i], ringCol);
+      showLEDs();
+    }
+    delay(revealPauseMs);
+    // Gentle fade-out of the targets before the reveal repeats (per-ring brightness).
+    for (int s = 1; s <= 12; s++) {
+      float f = 1.0f - (float)s / 12;
+      for (int i = 0; i < n; i++) {
+        float bri = (maxD > 1) ? (0.25f + 0.75f * (float)(td[i] - 1) / (maxD - 1)) : 1.0f;
+        setSquareLED(tr[i], tc[i], LedRGB{(uint8_t)(srcColor.r * bri * f), (uint8_t)(srcColor.g * bri * f), (uint8_t)(srcColor.b * bri * f)});
+      }
+      showLEDs();
+      delay(30);
+    }
+  }
+  clearAllLEDs();
+  releaseLEDs();
+}
+
+void BoardDriver::playShinyPreview() {
+  // Live preview of the turn-indicator "shiny" glint with the CURRENT sweep
+  // speed + highlight colour. Sample layout: the WHITE side (bottom two rows) is
+  // "to move" and gets the glint; the BLACK side (top two rows) is dimmed.
+  acquireLEDs();
+  auto blend = [](LedRGB a, LedRGB b, float f) -> LedRGB {
+    return LedRGB{(uint8_t)((float)a.r + ((float)b.r - (float)a.r) * f),
+                  (uint8_t)((float)a.g + ((float)b.g - (float)a.g) * f),
+                  (uint8_t)((float)a.b + ((float)b.b - (float)a.b) * f)};
+  };
+  // Loops until switched off (toggle). Reads the settings live each frame so the
+  // sliders/colour update the preview while it runs.
+  while (shinyPreviewOn) {
+    LedRGB shc = shinyColor;
+    uint32_t cycle = shinySweepMs + shinyPauseMs;
+    uint32_t ph = (uint32_t)millis() % cycle;
+    bool shining = (ph < shinySweepMs);
+    float sweep = -0.3f + (float)ph / (float)shinySweepMs * 1.6f;   // off-edge → off-edge, no wrap
+    for (int r = 0; r < NUM_ROWS; r++)
+      for (int c = 0; c < NUM_COLS; c++) {
+        bool whiteSide = (r >= NUM_ROWS - 2);
+        bool blackSide = (r <= 1);
+        if (!whiteSide && !blackSide) { setSquareLED(r, c, LedColors::Off); continue; }
+        LedRGB glow = whiteSide ? animPathColorW : animPathColorB;
+        if (whiteSide) {                                  // side to move
+          float add = 0.0f;
+          if (shining) {
+            float pos = (float)(r + c) / 14.0f;
+            float d = fabsf(pos - sweep);
+            add = expf(-(d * d) * 32.0f) * 0.85f;
+          }
+          glow = blend(glow, shc, 0.12f + add);           // consistent base + glint
+        } else {                                          // opponent → dimmed
+          glow = LedRGB{(uint8_t)(glow.r * 0.40f), (uint8_t)(glow.g * 0.40f), (uint8_t)(glow.b * 0.40f)};
+        }
+        setSquareLED(r, c, glow);
+      }
+    showLEDs();
+    delay(20);
+  }
+  clearAllLEDs();
+  releaseLEDs();
+}
+
+void BoardDriver::renderBrightnessTest() {
+  int lum = brightnessTestLum;
+  if (lum < 0) return;
+  if (lum > 255) lum = 255;
+  acquireLEDs();
+  strip->SetLuminance((uint8_t)lum);   // bypass the cap — this is the headroom test
+  for (int i = 0; i < LED_COUNT; i++)
+    strip->SetPixelColor(i, RgbColor(255, 255, 255));
+  showLEDs();
+  releaseLEDs();
+}
+
+void BoardDriver::resetLedMapToDefault() {
+  for (int row = 0; row < NUM_ROWS; row++)
+    for (int col = 0; col < NUM_COLS; col++)
+      ledIndexMap[row][col] = DefaultRowColToLEDindexMap[row][col];
+  saveCalibration();  // persist so the straight map survives a reboot
+  Serial.println("LED map reset to default straight wiring");
 }
 
 void BoardDriver::saveCalibration() {
@@ -644,9 +890,11 @@ bool BoardDriver::calibrateAxis(Axis axis, uint8_t* axisPinsOrder, size_t NUM_PI
 
 bool BoardDriver::runCalibration() {
   calibrating.store(true);
-  // Calibration animation - light up each pixel sequentially
+  // Calibration animation - light up each pixel sequentially.
+  // Dimmed white (≈22 %): all 64 at full white would draw ~3.8 A and brown out
+  // a single-end-fed strip (voltage sags, board hangs). See startupAnimation.
   for (int i = 0; i < LED_COUNT; i++) {
-    strip->SetPixelColor(i, RgbColor(LedColors::White.r, LedColors::White.g, LedColors::White.b));
+    strip->SetPixelColor(i, RgbColor(56, 56, 56));
     showLEDs();
     delay(50);
   }
@@ -708,12 +956,14 @@ bool BoardDriver::runCalibration() {
   auto displayCalibrationLEDs = [&](int currentPixel) {
     for (int i = 0; i < LED_COUNT; i++)
       strip->SetPixelColor(i, RgbColor(0));
+    // Dimmed (≈22 %) so a fully-mapped board (64 green) + the white cursor stays
+    // well under the brown-out threshold on a single-end-fed strip.
     for (int r = 0; r < NUM_ROWS; r++)
       for (int c = 0; c < NUM_COLS; c++)
         if (logicalUsed[r][c])
-          strip->SetPixelColor(ledIndexMap[r][c], RgbColor(LedColors::Green.r, LedColors::Green.g, LedColors::Green.b));
+          strip->SetPixelColor(ledIndexMap[r][c], RgbColor(0, 56, 0));
     if (currentPixel < LED_COUNT)
-      strip->SetPixelColor(currentPixel, RgbColor(LedColors::White.r, LedColors::White.g, LedColors::White.b));
+      strip->SetPixelColor(currentPixel, RgbColor(56, 56, 56));
     showLEDs();
   };
 
@@ -1024,7 +1274,13 @@ void BoardDriver::updateSensorPrev() {
 }
 
 int BoardDriver::getPixelIndex(int row, int col) {
-  return ledIndexMap[row][col];
+  if (row < 0 || row >= NUM_ROWS || col < 0 || col >= NUM_COLS) return 0;
+  int idx = ledIndexMap[row][col];
+  // Guard against a corrupt calibration entry: an index past the strip length
+  // would make NeoPixelBus::SetPixelColor() write out of bounds and reboot the
+  // board mid-animation (observed: LED-walk crash at ~half the squares).
+  if (idx < 0 || idx >= LED_COUNT) return 0;
+  return idx;
 }
 
 void BoardDriver::acquireLEDs() {
@@ -1056,6 +1312,14 @@ void BoardDriver::setSquareLED(int row, int col, LedRGB color) {
 
 void BoardDriver::showLEDs() {
   strip->Show();
+  // Block until the WS2812B frame is FULLY clocked out. Show() starts the RMT
+  // transmission asynchronously and returns immediately — if the sensor shift-
+  // register scan (readSensors) runs while the frame is still in flight, its
+  // switching noise corrupts the data → random/wrong LED colours. This only
+  // shows up in real games (which scan sensors), never in simulation. Waiting
+  // here keeps the LED transmission and the sensor scan from overlapping.
+  uint32_t guard = 0;
+  while (!strip->CanShow() && ++guard < 200000) { /* ~spin until clocked out */ }
 }
 
 void BoardDriver::loadHighlightColors() {
@@ -1500,14 +1764,10 @@ void BoardDriver::modeChangeTransition() {
 }
 
 void BoardDriver::doModeChangeTransition() {
-  // TV-style off → on between animations: outside-in fade to black, then
-  // inside-out cyan reveal that settles to black ready for the next anim to
-  // take over.
-  LedRGB base[NUM_ROWS][NUM_COLS];
-  for (int r = 0; r < NUM_ROWS; r++)
-    for (int c = 0; c < NUM_COLS; c++)
-      base[r][c] = currentColors[r][c];
-
+  // Inside-out reveal only: a cyan glow expands from the centre outward, then
+  // fades to black ready for the next animation. The earlier outside-in "pull
+  // into the centre" phase was removed — at game start it read as a SECOND
+  // ("snail") animation on top of this one; the user wants just the inside-out.
   const float cx = (NUM_COLS - 1) * 0.5f;
   const float cy = (NUM_ROWS - 1) * 0.5f;
   const float maxR = sqrtf(cx * cx + cy * cy) + 1.0f;
@@ -1517,28 +1777,11 @@ void BoardDriver::doModeChangeTransition() {
     strip->SetPixelColor(getPixelIndex(r, c), RgbColor(R, G, B));
   };
 
-  // Phase 1 — OFF: shrink the lit area from the edges to the centre. Cells
-  // outside the shrinking circle go dark; cells inside hold their previous
-  // colour. The result reads as "the picture pulls into the centre and out".
-  for (float radius = maxR; radius > -0.5f; radius -= 0.55f) {
-    for (int r = 0; r < NUM_ROWS; r++) {
-      for (int c = 0; c < NUM_COLS; c++) {
-        float dx = c - cx, dy = r - cy;
-        float dist = sqrtf(dx * dx + dy * dy);
-        if (dist > radius)
-          writeDirect(r, c, 0, 0, 0);
-        else
-          setSquareLED(r, c, base[r][c]);
-      }
-    }
-    showLEDs();
-    vTaskDelay(pdMS_TO_TICKS(28));
-  }
+  // Start from a clean black slate, then expand the glow.
+  clearAllLEDs(false);
+  showLEDs();
 
-  // Brief black gap so the off→on transition reads cleanly.
-  vTaskDelay(pdMS_TO_TICKS(60));
-
-  // Phase 2 — ON: expand a cyan glow from the centre outward, then fade it
+  // Expand a cyan glow from the centre outward, then fade it
   // back to black so the next animation starts on a clean slate.
   const LedRGB onColor = {60, 220, 255};
   for (float radius = 0.0f; radius < maxR + 1.0f; radius += 0.55f) {
@@ -1655,9 +1898,41 @@ void BoardDriver::doCellPulse(int row, int col, LedRGB color) {
   }
 }
 
-void BoardDriver::movePathAnimation(int fromRow, int fromCol, int toRow, int toCol, char player) {
+void BoardDriver::heartbeatSquare(int row, int col, LedRGB peak) {
+  AnimationJob job = {AnimationType::HEARTBEAT, nullptr, {}};
+  job.params.blink = {row, col, peak, 0, false};
+  xQueueSend(animationQueue, &job, portMAX_DELAY);
+}
+
+void BoardDriver::doHeartbeat(int row, int col, LedRGB peak) {
+  // Quick "lub-dub" heartbeat on a freshly-placed cell: a strong beat then a
+  // softer one, both smoothly faded, settling back onto the underlying glow.
+  LedRGB base = currentColors[row][col];
+  auto blend = [&](float k) {                 // k = 0 → base, 1 → peak
+    uint8_t r = (uint8_t)(base.r + ((int)peak.r - (int)base.r) * k);
+    uint8_t g = (uint8_t)(base.g + ((int)peak.g - (int)base.g) * k);
+    uint8_t b = (uint8_t)(base.b + ((int)peak.b - (int)base.b) * k);
+    currentColors[row][col] = LedRGB{r, g, b};
+    strip->SetPixelColor(getPixelIndex(row, col), RgbColor(r, g, b));
+    showLEDs();
+  };
+  const float strength[2] = {1.0f, 0.6f};     // lub (full) then dub (softer)
+  for (int bi = 0; bi < 2; bi++) {
+    float pk = strength[bi];
+    const int up = 5, dn = 7;
+    for (int s = 1; s <= up; s++) { blend(pk * (float)s / up); vTaskDelay(pdMS_TO_TICKS(10)); }
+    for (int s = dn; s >= 0; s--) { blend(pk * (float)s / dn); vTaskDelay(pdMS_TO_TICKS(12)); }
+    if (bi == 0) vTaskDelay(pdMS_TO_TICKS(55));  // gap between lub and dub
+  }
+  currentColors[row][col] = base;             // settle exactly on the glow
+  strip->SetPixelColor(getPixelIndex(row, col), RgbColor(base.r, base.g, base.b));
+  showLEDs();
+}
+
+void BoardDriver::movePathAnimation(int fromRow, int fromCol, int toRow, int toCol, char player,
+                                    LedRGB color, bool useColor) {
   AnimationJob job = {AnimationType::MOVE_PATH, nullptr, {}};
-  job.params.path = {fromRow, fromCol, toRow, toCol, player};
+  job.params.path = {fromRow, fromCol, toRow, toCol, player, color, useColor};
   xQueueSend(animationQueue, &job, portMAX_DELAY);
 }
 
@@ -1671,11 +1946,21 @@ void BoardDriver::doMovePath(int fr, int fc, int tr, int tc) {
   bool isKnight = (adr == 1 && adc == 2) || (adr == 2 && adc == 1);
   int pathR[10], pathC[10], pathLen = 0;
   if (isKnight) {
-    int cornerR = (adr > adc) ? tr : fr;
-    int cornerC = (adr > adc) ? fc : tc;
-    pathR[pathLen] = fr;      pathC[pathLen++] = fc;
-    pathR[pathLen] = cornerR; pathC[pathLen++] = cornerC;
-    pathR[pathLen] = tr;      pathC[pathLen++] = tc;
+    // Trace the full L cell-by-cell so the walk has no gap. Walk the LONG leg
+    // (the axis with distance 2) one square at a time, then the single short-leg
+    // step onto the target. The old version listed only source/corner/target, so
+    // the middle of the long leg was skipped → the knight's trail had a hole.
+    int sr = (dr > 0) - (dr < 0);
+    int sc = (dc > 0) - (dc < 0);
+    pathR[pathLen] = fr; pathC[pathLen++] = fc;            // source
+    if (adr > adc) {                                       // 2 rows, 1 col
+      pathR[pathLen] = fr + sr;     pathC[pathLen++] = fc; // mid of long leg
+      pathR[pathLen] = fr + 2 * sr; pathC[pathLen++] = fc; // corner
+    } else {                                               // 1 row, 2 cols
+      pathR[pathLen] = fr; pathC[pathLen++] = fc + sc;     // mid of long leg
+      pathR[pathLen] = fr; pathC[pathLen++] = fc + 2 * sc; // corner
+    }
+    pathR[pathLen] = tr; pathC[pathLen++] = tc;            // target (corner + short step)
   } else {
     int steps = (adr > adc) ? adr : adc;
     int sr = (dr > 0) - (dr < 0);
@@ -1686,105 +1971,103 @@ void BoardDriver::doMovePath(int fr, int fc, int tr, int tc) {
       pathLen++;
     }
   }
-  float dim = getAutoDimFactor();
-
-  // Snapshot the current LED state so we can overlay the trail without
-  // wiping the picture behind it.
+  // Snapshot the current LED state (the resting glow painted right before this
+  // animation). Each faded path square settles back onto its underlying colour
+  // instead of snapping: the SOURCE square goes to black (its piece moved away),
+  // but a square the knight LEAPED OVER fades its piece glow back in rather than
+  // hard-cutting — the renderBoardLEDs() repaint afterwards then matches it.
   LedRGB base[NUM_ROWS][NUM_COLS];
   for (int r = 0; r < NUM_ROWS; r++)
     for (int c = 0; c < NUM_COLS; c++)
       base[r][c] = currentColors[r][c];
-  auto restoreBase = [&]() {
-    for (int r = 0; r < NUM_ROWS; r++)
-      for (int c = 0; c < NUM_COLS; c++)
-        setSquareLED(r, c, base[r][c]);
-  };
+
+  // NOTE: the placement walk intentionally does NOT apply getAutoDimFactor().
+  // renderBoardLEDs() (the resting piece glow) ignores auto-dim too, so the
+  // board stays fully lit during a game even in the night window. Multiplying
+  // the walk by the auto-dim factor made it *invisible* at night (nightOff →
+  // factor 0 → walkCol = black) while the pieces still glowed — the "after walk
+  // animation shows nothing" bug. Global SetLuminance already dims everything
+  // uniformly, so the trail matches the pieces without an extra factor here.
 
   // Per-player styling: trail colour + speed multiplier from user settings.
-  // effectivePathColor honours sim's blue/green override when active.
-  LedRGB trailColor = effectivePathColor(mphPlayer);
-  float speed = (mphPlayer == 'b') ? animChessSpeedB : animChessSpeedW;
-  if (speed < 0.25f) speed = 0.25f;
-  if (speed > 3.0f)  speed = 3.0f;
-  // Per-frame pacing. Per-cell delay is capped at 60 ms so a single hop
-  // doesn't drag — the user's complaint was "source is lit way too long".
-  // Long paths still fit inside the total walkBudgetMs/speed window.
-  uint32_t totalBudget = (uint32_t)((float)walkBudgetMs / speed);
-  uint32_t frameDelay = totalBudget / (pathLen > 0 ? pathLen : 1);
-  if (frameDelay < 22) frameDelay = 22;
-  if (frameDelay > 60) frameDelay = 60;
+  // When the caller passes an explicit colour (HvH per-profile player colour),
+  // use it so the walk matches the piece glow. Otherwise fall back to
+  // effectivePathColor, which honours sim's blue/green override when active.
+  LedRGB trailColor = mphUseColor ? mphColor : effectivePathColor(mphPlayer);
+  // Placement fade: when the piece lands, light the whole travelled path, then
+  // fade it out as a wave that starts at the source and rolls toward the target.
+  // The source begins fading first, each successive square a little later. The
+  // destination square is NOT faded (the piece rests there). Speed is driven by
+  // the user-configurable afterWalkMs (per-square fade duration; lower = faster).
+  const int FADE_STEPS = 18;                  // per-square fade resolution
+  const int STAGGER    = 4;                    // frames between successive squares (tight → snappy)
+  uint32_t frameMs = afterWalkMs / FADE_STEPS;
+  if (frameMs < 2) frameMs = 2;
 
-  for (int i = 0; i < pathLen; i++) {
-    restoreBase();
-    for (int j = 0; j <= i; j++) {
-      float depth = (float)(i - j) / (float)pathLen;   // 0 = head, 1 = tail
-      // Squared falloff so the SOURCE (depth high) drops to near-zero quickly
-      // — head stays bright (depth=0 → 1.0), but cells behind it dim much
-      // faster than a linear gradient. Source visibility shrinks from
-      // "lit the whole walk" to "brief flash on pickup, then gone".
-      float f = (1.0f - depth);
-      float bri = f * f * 0.95f + 0.08f;
-      if (bri > 1.0f) bri = 1.0f;
-      bri *= dim;
-      uint8_t cR = (uint8_t)(trailColor.r * bri);
-      uint8_t cG = (uint8_t)(trailColor.g * bri);
-      uint8_t cB = (uint8_t)(trailColor.b * bri);
-      setSquareLED(pathR[j], pathC[j], LedRGB{cR, cG, cB});
-    }
-    showLEDs();
-    vTaskDelay(pdMS_TO_TICKS(frameDelay));
-  }
-  // Tail fade-out: the SOURCE square dies FIRST (it's the farthest from the
-  // target — the piece has visibly left it), then each successive cell, and
-  // finally the destination. Using `j` directly as the stagger order means
-  // source (j=0) gets progress=f starting at frame 0, while the destination
-  // (j=pathLen-1) only starts fading at frame pathLen-1. Net effect: when
-  // the after-move cellPulse on the destination kicks in, the source has
-  // long been dark.
-  // Per-cell tail fade: source (j=0) fades in 4 frames, target (j=pathLen-1)
-  // fades in ~8 frames — source is visibly the FASTEST off, then each
-  // successive cell takes longer. Per-cell start frame stays j so the order
-  // is preserved. tailFrameDelay 12 ms ≈ 80 fps for the smoothest gradient.
-  uint32_t tailFrameDelay = 12;
-  // Source fades in 2 frames (24 ms) — by the time the head reaches the
-  // target the source already had a quadratic-falloff dim during the walk,
-  // so a brief tail finish is enough.
-  int srcWindow = 2;
-  int tgtWindow = 6;
-  auto windowFor = [&](int j) {
-    if (pathLen <= 1) return srcWindow;
-    return srcWindow + ((tgtWindow - srcWindow) * j) / (pathLen - 1);
+  LedRGB walkCol = trailColor;
+  // Peak colour per square. On an OCCUPIED square the resting glow may share the
+  // moving side's colour (a knight leaping its OWN pawn → walkCol == the glow,
+  // so the walk would be invisible). Brighten toward white there so the pass-over
+  // always reads; the fade then settles it back onto the piece glow. Empty
+  // squares keep the plain player colour.
+  auto occupied = [&](int r, int c) { LedRGB b = base[r][c]; return (b.r || b.g || b.b); };
+  auto peakFor  = [&](int r, int c) -> LedRGB {
+    if (!occupied(r, c)) return walkCol;
+    return LedRGB{(uint8_t)(walkCol.r + (255 - walkCol.r) * 0.55f),
+                  (uint8_t)(walkCol.g + (255 - walkCol.g) * 0.55f),
+                  (uint8_t)(walkCol.b + (255 - walkCol.b) * 0.55f)};
   };
-  int tailFrames = (pathLen - 1) + windowFor(pathLen - 1);
-  // Per-cell starting brightness = the walk's last-frame brightness. No
-  // jump at the walk → tail handoff.
-  float walkEndBri[10];
-  for (int j = 0; j < pathLen; j++) {
-    float depth = (float)((pathLen - 1) - j) / (float)pathLen;
-    float f = (1.0f - depth);
-    float b = f * f * 0.95f + 0.08f;        // same quadratic falloff as walk
-    if (b > 1.0f) b = 1.0f;
-    walkEndBri[j] = b;
-  }
-  for (int f = 0; f < tailFrames; f++) {
-    restoreBase();
-    for (int j = 0; j < pathLen; j++) {
-      int progress = f - j;                            // start staggered: j=0 first
-      int myWindow = windowFor(j);
-      if (progress >= myWindow) continue;
-      float fadeFactor = (progress < 0) ? 1.0f : 1.0f - (float)progress / (float)myWindow;
-      float bri = walkEndBri[j] * fadeFactor * dim;
-      uint8_t cR = (uint8_t)(trailColor.r * bri);
-      uint8_t cG = (uint8_t)(trailColor.g * bri);
-      uint8_t cB = (uint8_t)(trailColor.b * bri);
-      setSquareLED(pathR[j], pathC[j], LedRGB{cR, cG, cB});
+
+  // Fade the whole path IN from its underlying glow to the peak — a quick rise so
+  // the walk eases on smoothly instead of popping (the wave just settled the board
+  // into the resting glow; snapping to the trail colour read as a hard cut).
+  const int RISE_STEPS = 5;
+  for (int s = 1; s <= RISE_STEPS; s++) {
+    float t = (float)s / RISE_STEPS;
+    for (int i = 0; i < pathLen; i++) {
+      LedRGB pk = peakFor(pathR[i], pathC[i]);
+      LedRGB bs = base[pathR[i]][pathC[i]];
+      setSquareLED(pathR[i], pathC[i], LedRGB{
+          (uint8_t)((float)bs.r + ((float)pk.r - (float)bs.r) * t),
+          (uint8_t)((float)bs.g + ((float)pk.g - (float)bs.g) * t),
+          (uint8_t)((float)bs.b + ((float)pk.b - (float)bs.b) * t)});
     }
     showLEDs();
-    vTaskDelay(pdMS_TO_TICKS(tailFrameDelay));
+    vTaskDelay(pdMS_TO_TICKS(frameMs));
   }
-  // Final: clean base. The destination piece is part of the base render that
-  // simulation/chess flow paints right after; we don't paint anything extra.
-  restoreBase();
+
+  // Staggered slow fade-out: source (j=0) first → toward the target. The target
+  // cell (j = pathLen-1) is left out of the fade so it stays lit. Each square
+  // fades from the walk colour toward its UNDERLYING resting colour: the source
+  // square (the piece left it) settles to black, while a square the knight
+  // leaped over settles back onto its piece glow — so a jumped-over piece's
+  // colour fades smoothly back in instead of hard-cutting at the final repaint.
+  int fadeCells = pathLen - 1;                // source + intermediate squares
+  if (fadeCells < 1) fadeCells = 1;
+  int totalFrames = (fadeCells - 1) * STAGGER + FADE_STEPS;
+  for (int f = 0; f <= totalFrames; f++) {
+    for (int j = 0; j < fadeCells; j++) {
+      // Source square always resolves to black; every other path square
+      // resolves to its underlying glow (off for empty, piece colour if leaped).
+      LedRGB peak = peakFor(pathR[j], pathC[j]);
+      LedRGB dest = (j == 0) ? LedRGB{0, 0, 0} : base[pathR[j]][pathC[j]];
+      int local = f - j * STAGGER;
+      float bri;                                                     // 1 = peak, 0 = dest
+      if (local <= 0)               bri = 1.0f;                      // not started yet
+      else if (local >= FADE_STEPS) bri = 0.0f;                      // fully settled
+      else                          bri = 1.0f - (float)local / FADE_STEPS;
+      setSquareLED(pathR[j], pathC[j], LedRGB{
+          (uint8_t)((float)dest.r + ((float)peak.r - (float)dest.r) * bri),
+          (uint8_t)((float)dest.g + ((float)peak.g - (float)dest.g) * bri),
+          (uint8_t)((float)dest.b + ((float)peak.b - (float)dest.b) * bri)});
+    }
+    showLEDs();
+    vTaskDelay(pdMS_TO_TICKS(frameMs));
+  }
+  // Destination stays lit; the caller's cellPulse + renderBoardLEDs fold it into
+  // the resting glow on the next paint. The faded path squares already sit on
+  // their underlying colour, so that repaint causes no visible jump.
+  setSquareLED(tr, tc, walkCol);
   showLEDs();
 }
 
@@ -2309,7 +2592,14 @@ void BoardDriver::startupAnimation() {
   const float cy = (NUM_ROWS - 1) * 0.5f;
   const float maxDist = sqrtf(cx * cx + cy * cy);
 
+  // Cap the boot-animation brightness: write() bypasses the normal brightness
+  // limit and writes raw values, so the "all cells lit" / white-flash frames
+  // would draw the full ~3.8 A on 64 LEDs. On a single-end-fed strip that browns
+  // out the far end (voltage sags 5V→2V) and hangs the boot. Scaling to ~22 %
+  // keeps the peak well under 1 A while looking the same.
+  const float BOOT_DIM = 0.22f;
   auto write = [&](int r, int c, uint8_t R, uint8_t G, uint8_t B) {
+    R = (uint8_t)(R * BOOT_DIM); G = (uint8_t)(G * BOOT_DIM); B = (uint8_t)(B * BOOT_DIM);
     currentColors[r][c] = LedRGB{R, G, B};
     strip->SetPixelColor(getPixelIndex(r, c), RgbColor(R, G, B));
   };
@@ -2478,12 +2768,13 @@ std::atomic<bool>* BoardDriver::startWaitingAnimation() {
 }
 
 void BoardDriver::doWaiting(std::atomic<bool>* stopFlag) {
-  // Border perimeter for NUM_ROWS x NUM_COLS board (clockwise)
+  // Full 8x8 border perimeter (clockwise from top-left). The old array only
+  // traced rows 0-3 → the waiting/OTA "snake" ran on a half (8x4) board.
   static const int positions[][2] = {
-    {0,0},{0,1},{0,2},{0,3},{0,4},{0,5},{0,6},{0,7},
-    {1,7},{2,7},{3,7},
-    {3,6},{3,5},{3,4},{3,3},{3,2},{3,1},{3,0},
-    {2,0},{1,0}
+    {0,0},{0,1},{0,2},{0,3},{0,4},{0,5},{0,6},{0,7},   // top row, L→R
+    {1,7},{2,7},{3,7},{4,7},{5,7},{6,7},{7,7},          // right column, top→bottom
+    {7,6},{7,5},{7,4},{7,3},{7,2},{7,1},{7,0},          // bottom row, R→L
+    {6,0},{5,0},{4,0},{3,0},{2,0},{1,0}                 // left column, bottom→top
   };
   static const int numPositions = sizeof(positions) / sizeof(positions[0]);
 
@@ -4370,7 +4661,11 @@ float BoardDriver::getAutoDimFactor() const {
 
 // LED settings methods
 void BoardDriver::setBrightness(uint8_t value) {
-  brightness = value > 255 ? 255 : (value < 10 ? 10 : value);
+  // No hard cap any more — the user may push past MAX_SAFE_BRIGHTNESS at their
+  // own risk (single-end-fed strips brown out above ~25 %). The web UI warns when
+  // going above it, and saveLedSettings() refuses to PERSIST values over the cap
+  // (those apply for the current runtime only — a reboot returns to a safe value).
+  brightness = value < 1 ? 1 : value;   // allow very dim (down to 1); 0 would be off
   if (!calibrating.load()) {
     strip->SetLuminance(brightness);
     showLEDs();
@@ -4445,8 +4740,19 @@ void BoardDriver::loadLedSettings() {
   walkBudgetMs     = prefs.getUShort("walkBudgMs", 380);
   replayIntervalMs = prefs.getUShort("rpIntMs",   2000);
   replayOverlayPct = prefs.getUChar("rpOvlyPct",  95);
-  dimOthersOnPickup = prefs.getBool("dimOthrs",   false);
+  dimOthersOnPickup = prefs.getBool("dimOthrs",   true);   // default ON (dim other squares on pickup)
   dimOthersPct      = prefs.getUChar("dimOthrPct", 50);
+  revealRingMs      = prefs.getUShort("revRing",  220);
+  revealPauseMs     = prefs.getUShort("revPause", 700);
+  revealSequential  = prefs.getBool("revSeq", false);
+  noobBudgetMs      = prefs.getUShort("noobStagMs", 100);
+  afterWalkMs       = prefs.getUShort("awMs", 180);
+  rayGhostVal       = prefs.getUChar("rayGhostV", 15);
+  shinySweepMs      = prefs.getUShort("shinyMs", 1430);
+  shinyPauseMs      = prefs.getUShort("shinyPse", 0);
+  shinyColor.r      = prefs.getUChar("shinyR", 255);
+  shinyColor.g      = prefs.getUChar("shinyG", 255);
+  shinyColor.b      = prefs.getUChar("shinyB", 255);
   prefs.end();
   Serial.printf("LED settings loaded: brightness=%d, idleAnim=%d, idleColor=#%02x%02x%02x speed=%.1f sat=%d\n",
     brightness, (uint8_t)idleAnimation, idleColor.r, idleColor.g, idleColor.b, animSpeed, idleSaturation);
@@ -4459,7 +4765,9 @@ void BoardDriver::saveLedSettings() {
   }
   Preferences prefs;
   prefs.begin("ledSettings", false);
-  prefs.putUChar("brightness", brightness);
+  // Never persist a brightness above the safety cap — an over-bright setting is
+  // runtime-only; a reboot must come back at a safe level.
+  prefs.putUChar("brightness", brightness > MAX_SAFE_BRIGHTNESS ? MAX_SAFE_BRIGHTNESS : brightness);
   prefs.putUChar("dimMult", dimMultiplier);
   prefs.putUChar("idleAnim", (uint8_t)idleAnimation);
   prefs.putUChar("idleColorR",  idleColor.r);
@@ -4501,6 +4809,17 @@ void BoardDriver::saveLedSettings() {
   prefs.putUChar("rpOvlyPct",  replayOverlayPct);
   prefs.putBool("dimOthrs",    dimOthersOnPickup);
   prefs.putUChar("dimOthrPct", dimOthersPct);
+  prefs.putUShort("revRing",   revealRingMs);
+  prefs.putUShort("revPause",  revealPauseMs);
+  prefs.putBool("revSeq",      revealSequential);
+  prefs.putUShort("noobStagMs", noobBudgetMs);
+  prefs.putUShort("awMs",      afterWalkMs);
+  prefs.putUChar("rayGhostV",  rayGhostVal);
+  prefs.putUShort("shinyMs",   shinySweepMs);
+  prefs.putUShort("shinyPse",  shinyPauseMs);
+  prefs.putUChar("shinyR",     shinyColor.r);
+  prefs.putUChar("shinyG",     shinyColor.g);
+  prefs.putUChar("shinyB",     shinyColor.b);
   prefs.end();
   Serial.printf("LED settings saved: brightness=%d, idleAnim=%d, idleColor=#%02x%02x%02x speed=%.1f sat=%d\n",
     brightness, (uint8_t)idleAnimation, idleColor.r, idleColor.g, idleColor.b, animSpeed, idleSaturation);

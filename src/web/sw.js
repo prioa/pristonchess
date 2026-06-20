@@ -14,12 +14,13 @@
      → NOT intercepted; the browser talks straight to the ESP32.
 
    NOTE: bump CACHE whenever web assets change so clients pick up the new files. */
-const CACHE = 'pristonchess-v18';
-const STATIC_RE = /\.(?:js|css|svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|mp3|wav|ogg|json)$/i;
+const CACHE = 'pristonchess-v49';
+const STATIC_RE = /\.(?:js|css|svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|mp3|m4a|aac|wav|ogg|json)$/i;
 
 // Asset shell precached on install (one request at a time — see installer).
 const PRECACHE = [
   './scripts/app.js',
+  './scripts/custom-sounds.js',
   './scripts/jquery-4.0.0.min.js',
   './scripts/chess.js',
   './scripts/chessboard-1.0.0.min.js',
@@ -29,6 +30,7 @@ const PRECACHE = [
   './icon-512.png',
   './favicon.svg',
   './manifest.json',
+  './sounds/sword.m4a',
   './pieces/wP.svg', './pieces/wN.svg', './pieces/wB.svg',
   './pieces/wR.svg', './pieces/wQ.svg', './pieces/wK.svg',
   './pieces/bP.svg', './pieces/bN.svg', './pieces/bB.svg',

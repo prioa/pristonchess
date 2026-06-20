@@ -33,6 +33,8 @@ public:
     // Display name for a fixed profile ID (Benny/Rene/Flo/Philipp). Returns
     // a fallback string when the ID is unknown or empty.
     String nameForId(const char* id);
+    // Hex colour ("#rrggbb") configured for a profile, or "" if unknown.
+    String colorForId(const char* id);
 
     // Compact leaderboard entry for the web-UI leaderboard.
     struct LeaderEntry {

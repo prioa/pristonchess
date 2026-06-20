@@ -50,8 +50,12 @@ class SimulationMode : public ChessGame {
   size_t              step;
   unsigned long       lastTickMs;
   bool                finished;
+  bool                awaitingPlace = false; // true between the pickup and place phases of a move
   uint32_t            seed;
 
   static constexpr unsigned long MOVE_INTERVAL_MS = 2600;
   static constexpr unsigned long RESTART_DELAY_MS = 4500;
+  // Gap between the simulated pickup (sound + event) and the place, so the
+  // pickup sound is heard before the place/capture — mirrors a real move.
+  static constexpr unsigned long PICKUP_TO_PLACE_MS = 700;
 };

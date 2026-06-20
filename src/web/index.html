@@ -360,9 +360,14 @@
                 <form id="boardSettingsForm">
                     <div class="form-group">
                         <label for="brightness">LED Brightness: <span id="brightness-value"
-                                style="color: #ec8703;">255</span></label>
-                        <input type="range" id="brightness" name="brightness" min="10" max="255" value="255"
+                                style="color: #ec8703;">120</span></label>
+                        <!-- Cap removed: values above 120 are allowed but are RUNTIME-ONLY
+                             (not persisted) and trigger the warning below. -->
+                        <input type="range" id="brightness" name="brightness" min="1" max="255" step="1" value="120"
                             class="slider-input">
+                        <p id="brightnessWarn" style="display:none;font-size:11px;color:#ff6b4a;margin:6px 0 0;">
+                            ⚠ Über 120: kann das Netzteil/den Strip überlasten (Brownout). Gilt nur bis zum nächsten Neustart – wird nicht gespeichert.
+                        </p>
                     </div>
                     <div class="form-group">
                         <label for="dimMultiplier">Dark Square Dimming: <span id="dim-value"
@@ -529,7 +534,7 @@
                         </div>
                         <div class="form-group">
                             <label for="autoDimBrightness">Night Brightness: <span id="autoDimBri-value" style="color:#ec8703;">60</span></label>
-                            <input type="range" id="autoDimBrightness" name="autoDimBrightness" min="10" max="200" value="60" class="slider-input">
+                            <input type="range" id="autoDimBrightness" name="autoDimBrightness" min="10" max="120" value="60" class="slider-input">
                         </div>
                     </div>
                     <p style="font-size:11px;color:#888;margin:10px 0 6px;">Änderungen werden sofort aufs Brett übernommen und gespeichert — Speichern ist nur zur Bestätigung.</p>
@@ -639,12 +644,119 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="revealSequential" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
+                        <span>Noob-Modus (Züge nacheinander)</span>
+                        <input type="checkbox" id="revealSequential" style="width:18px;height:18px;accent-color:#4D8CFF;">
+                    </label>
+                    <p style="font-size:11px;color:#888;margin:4px 0 0;">Beim Pickup leuchten alle erreichbaren Felder ganz dunkel, und ein heller Punkt fährt schnell einen möglichen Weg nach dem anderen ab (Ziel jeweils heller).</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="noobBudgetMs" style="display:flex;justify-content:space-between;">
+                        <span>Noob-Versatz (zwischen Optionen)</span>
+                        <span id="noobBudgetMsVal" style="font-family:var(--font-mono);color:#888;">100 ms</span>
+                    </label>
+                    <input type="range" id="noobBudgetMs" min="20" max="1000" step="10" value="100"
+                           style="width:100%;accent-color:#4D8CFF;">
+                    <p style="font-size:11px;color:#888;margin:4px 0 0;">Option 2 startet so viele ms nach Option 1, Option 3 nach Option 2 usw. — alle Punkte laufen gleichzeitig über ihre Felder.</p>
+                </div>
+
+                <div class="form-group">
+                    <button type="button" id="noobPreviewBtn" onclick="_toggleNoobPreview()"
+                            style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--color-accent-ring);background:var(--color-accent-bg);color:var(--color-accent-soft);cursor:pointer;font-weight:600;">
+                        ▶ Endlos-Vorschau am Brett (Dame)
+                    </button>
+                    <p style="font-size:11px;color:#888;margin:4px 0 0;">Spielt den Effekt mit einer Dame (viele Wege) dauerhaft am Brett ab, bis du wieder draufdrückst. Bei aktivem Noob-Modus siehst du die gestaffelten Punkte am besten.</p>
+                </div>
+
+                <div class="form-group">
                     <label for="dimOthersPct" style="display:flex;justify-content:space-between;">
                         <span>Dim-Helligkeit</span>
                         <span id="dimOthersPctVal" style="font-family:var(--font-mono);color:#888;">50%</span>
                     </label>
                     <input type="range" id="dimOthersPct" min="5" max="100" step="5" value="50"
                            style="width:100%;accent-color:#4D8CFF;">
+                </div>
+
+                <div class="form-group">
+                    <label for="revealRingMs" style="display:flex;justify-content:space-between;">
+                        <span>Reveal-Tempo (pro Ring)</span>
+                        <span id="revealRingMsVal" style="font-family:var(--font-mono);color:#888;">220 ms</span>
+                    </label>
+                    <input type="range" id="revealRingMs" min="30" max="1000" step="10" value="220"
+                           style="width:100%;accent-color:#4D8CFF;">
+                </div>
+
+                <div class="form-group">
+                    <label for="revealPauseMs" style="display:flex;justify-content:space-between;">
+                        <span>Reveal-Pause (Loop)</span>
+                        <span id="revealPauseMsVal" style="font-family:var(--font-mono);color:#888;">700 ms</span>
+                    </label>
+                    <input type="range" id="revealPauseMs" min="0" max="3000" step="50" value="700"
+                           style="width:100%;accent-color:#4D8CFF;">
+                </div>
+
+                <div class="form-group">
+                    <label for="afterWalkMs" style="display:flex;justify-content:space-between;">
+                        <span>After-Walk-Tempo (nach Zug)</span>
+                        <span id="afterWalkMsVal" style="font-family:var(--font-mono);color:#888;">180 ms</span>
+                    </label>
+                    <input type="range" id="afterWalkMs" min="40" max="800" step="10" value="180"
+                           style="width:100%;accent-color:#4D8CFF;">
+                    <p style="font-size:11px;color:#888;margin:4px 0 0;">Dauer des Lauf-Fades vom Ursprung zum Ziel nach dem Platzieren. Niedriger = schneller.</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="rayGhostVal" style="display:flex;justify-content:space-between;">
+                        <span>Strahl hinter Blocker</span>
+                        <span id="rayGhostValVal" style="font-family:var(--font-mono);color:#888;">15</span>
+                    </label>
+                    <input type="range" id="rayGhostVal" min="0" max="255" step="1" value="15"
+                           style="width:100%;accent-color:#4D8CFF;">
+                    <p style="font-size:11px;color:#888;margin:4px 0 0;">Felder hinter einer schlagbaren Figur (Turm/Läufer/Dame) leuchten beim Pickup mit dieser Helligkeit (Rohwert 0–255). 0 = aus.</p>
+                </div>
+
+                <div class="form-group">
+                    <button type="button" onclick="fetch('/board-preview').catch(function(){});"
+                            style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--color-border-strong);background:var(--color-bg-elev-3);color:var(--color-text);cursor:pointer;">
+                        👁 Vorschau am Brett abspielen
+                    </button>
+                </div>
+
+                <hr style="border:none;border-top:1px solid var(--color-border);margin:6px 0;">
+                <p style="font-size:12px;color:#aaa;margin:0 0 2px;font-weight:600;">Zug-Anzeige („Shiny")</p>
+
+                <div class="form-group">
+                    <label for="shinySweepMs" style="display:flex;justify-content:space-between;">
+                        <span>Shiny-Dauer (ein Durchlauf)</span>
+                        <span id="shinySweepMsVal" style="font-family:var(--font-mono);color:#888;">1430 ms</span>
+                    </label>
+                    <input type="range" id="shinySweepMs" min="100" max="5000" step="50" value="1430"
+                           style="width:100%;accent-color:#4D8CFF;">
+                    <p style="font-size:11px;color:#888;margin:4px 0 0;">Wie lange ein Glanz-Durchlauf über die Seite am Zug dauert. Niedriger = schneller.</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="shinyPauseMs" style="display:flex;justify-content:space-between;">
+                        <span>Shiny-Pause (zwischen Durchläufen)</span>
+                        <span id="shinyPauseMsVal" style="font-family:var(--font-mono);color:#888;">0 ms</span>
+                    </label>
+                    <input type="range" id="shinyPauseMs" min="0" max="8000" step="100" value="0"
+                           style="width:100%;accent-color:#4D8CFF;">
+                    <p style="font-size:11px;color:#888;margin:4px 0 0;">Pause nach jedem Durchlauf, bevor der nächste startet. 0 = ohne Pause (durchgehend).</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="shinyColor" style="display:flex;align-items:center;gap:8px;">Shiny-Highlight-Farbe</label>
+                    <input type="color" id="shinyColor" value="#ffffff"
+                           style="width:100%;height:40px;border-radius:6px;border:1px solid #444;background:#2a2a2a;cursor:pointer;padding:3px 4px;">
+                </div>
+
+                <div class="form-group">
+                    <button type="button" id="shinyPreviewBtn" onclick="_toggleShinyPreview()"
+                            style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--color-border-strong);background:var(--color-bg-elev-3);color:var(--color-text);cursor:pointer;">
+                        👁 Shiny-Vorschau starten
+                    </button>
                 </div>
 
                 <div class="form-group">
@@ -906,6 +1018,7 @@
             </div>
         </div>
 
+        <a href="./sounds.html" class="settings-debug-link">🔊 Soundeffekte</a>
         <a href="./debug.html" class="settings-debug-link">Debug-Ansicht</a>
 
         </details>
@@ -1400,6 +1513,7 @@
                 .then(data => {
                     document.getElementById('brightness').value = data.brightness;
                     document.getElementById('brightness-value').textContent = data.brightness;
+                    _updateBrightnessWarn(data.brightness);
                     document.getElementById('dimMultiplier').value = data.dimMultiplier;
                     document.getElementById('dim-value').textContent = data.dimMultiplier + '%';
                     if (data.idleAnimation !== undefined)
@@ -1444,6 +1558,36 @@
                         document.getElementById('animSpeedBVal').textContent = parseFloat(data.animSpeedB).toFixed(1) + '×';
                     }
                     if (data.dimOthersOnPickup !== undefined) document.getElementById('dimOthersOnPickup').checked = !!data.dimOthersOnPickup;
+                    if (data.revealSequential !== undefined) document.getElementById('revealSequential').checked = !!data.revealSequential;
+                    if (data.noobBudgetMs !== undefined) {
+                        document.getElementById('noobBudgetMs').value = data.noobBudgetMs;
+                        document.getElementById('noobBudgetMsVal').textContent = data.noobBudgetMs + ' ms';
+                    }
+                    if (data.revealRingMs !== undefined) {
+                        document.getElementById('revealRingMs').value = data.revealRingMs;
+                        document.getElementById('revealRingMsVal').textContent = data.revealRingMs + ' ms';
+                    }
+                    if (data.revealPauseMs !== undefined) {
+                        document.getElementById('revealPauseMs').value = data.revealPauseMs;
+                        document.getElementById('revealPauseMsVal').textContent = data.revealPauseMs + ' ms';
+                    }
+                    if (data.afterWalkMs !== undefined) {
+                        document.getElementById('afterWalkMs').value = data.afterWalkMs;
+                        document.getElementById('afterWalkMsVal').textContent = data.afterWalkMs + ' ms';
+                    }
+                    if (data.rayGhostVal !== undefined) {
+                        document.getElementById('rayGhostVal').value = data.rayGhostVal;
+                        document.getElementById('rayGhostValVal').textContent = data.rayGhostVal;
+                    }
+                    if (data.shinySweepMs !== undefined) {
+                        document.getElementById('shinySweepMs').value = data.shinySweepMs;
+                        document.getElementById('shinySweepMsVal').textContent = data.shinySweepMs + ' ms';
+                    }
+                    if (data.shinyPauseMs !== undefined) {
+                        document.getElementById('shinyPauseMs').value = data.shinyPauseMs;
+                        document.getElementById('shinyPauseMsVal').textContent = data.shinyPauseMs + ' ms';
+                    }
+                    if (data.shinyColor) document.getElementById('shinyColor').value = data.shinyColor;
                     if (data.dimOthersPct !== undefined) {
                         document.getElementById('dimOthersPct').value = data.dimOthersPct;
                         document.getElementById('dimOthersPctVal').textContent = data.dimOthersPct + '%';
@@ -1476,8 +1620,13 @@
         }
 
         // Update slider value displays in real-time
+        function _updateBrightnessWarn(v) {
+            const w = document.getElementById('brightnessWarn');
+            if (w) w.style.display = (parseInt(v, 10) > 120) ? 'block' : 'none';
+        }
         document.getElementById('brightness').addEventListener('input', function () {
             document.getElementById('brightness-value').textContent = this.value;
+            _updateBrightnessWarn(this.value);
         });
 
         document.getElementById('dimMultiplier').addEventListener('input', function () {
@@ -1524,21 +1673,72 @@
         document.getElementById('dimOthersOnPickup').addEventListener('change', function () {
             _postBoardSetting('dimOthersOnPickup', this.checked ? '1' : '0');
         });
-        function _bindLiveSlider(id, valId, suffix, scale) {
+        document.getElementById('revealSequential').addEventListener('change', function () {
+            _postBoardSetting('revealSequential', this.checked ? '1' : '0');
+            // Show the effect on the board right after enabling it.
+            if (this.checked) _triggerBoardPreview();
+        });
+        let _previewT = null;
+        function _triggerBoardPreview() {
+            // Debounced so it fires after the setting POST and not on every tick.
+            clearTimeout(_previewT);
+            _previewT = setTimeout(function () { fetch('/board-preview').catch(function () {}); }, 220);
+        }
+        function _bindLiveSlider(id, valId, suffix, scale, preview) {
             const el = document.getElementById(id);
             const lab = document.getElementById(valId);
             el.addEventListener('input', function () {
                 const v = scale ? scale(this.value) : this.value;
                 lab.textContent = v + suffix;
             });
-            el.addEventListener('change', function () { _postBoardSetting(id, this.value); });
+            el.addEventListener('change', function () {
+                _postBoardSetting(id, this.value);
+                if (preview) _triggerBoardPreview();
+            });
         }
         _bindLiveSlider('knightPathPct', 'knightPathPctVal', '%');
-        _bindLiveSlider('pickupPulseMs', 'pickupPulseMsVal', ' ms');
+        _bindLiveSlider('pickupPulseMs', 'pickupPulseMsVal', ' ms', null, true);
         _bindLiveSlider('walkBudgetMs', 'walkBudgetMsVal', ' ms');
         _bindLiveSlider('replayIntervalMs', 'replayIntervalMsVal', ' s', v => (v / 1000).toFixed(1));
         _bindLiveSlider('replayOverlayPct', 'replayOverlayPctVal', '%');
-        _bindLiveSlider('dimOthersPct', 'dimOthersPctVal', '%');
+        _bindLiveSlider('dimOthersPct', 'dimOthersPctVal', '%', null, true);
+        _bindLiveSlider('revealRingMs', 'revealRingMsVal', ' ms', null, true);
+        _bindLiveSlider('revealPauseMs', 'revealPauseMsVal', ' ms', null, true);
+        _bindLiveSlider('noobBudgetMs', 'noobBudgetMsVal', ' ms', null, false);
+        _bindLiveSlider('afterWalkMs', 'afterWalkMsVal', ' ms', null, false);
+        _bindLiveSlider('rayGhostVal', 'rayGhostValVal', '', null, false);
+        // Turn-indicator "shiny" settings — live label + post on commit. The
+        // preview is a TOGGLE (▶/⏹); it keeps running and picks up slider/colour
+        // changes live, so we never (re)trigger it on a change.
+        let _noobPreviewOn = false;
+        function _toggleNoobPreview() {
+            _noobPreviewOn = !_noobPreviewOn;
+            fetch('/board-preview-loop?on=' + (_noobPreviewOn ? '1' : '0')).catch(function () {});
+            const b = document.getElementById('noobPreviewBtn');
+            if (b) b.textContent = _noobPreviewOn ? '⏹ Vorschau stoppen' : '▶ Endlos-Vorschau am Brett (Dame)';
+        }
+        let _shinyPreviewOn = false;
+        function _toggleShinyPreview() {
+            _shinyPreviewOn = !_shinyPreviewOn;
+            fetch('/board-preview-shiny?on=' + (_shinyPreviewOn ? '1' : '0')).catch(function () {});
+            const btn = document.getElementById('shinyPreviewBtn');
+            if (btn) btn.textContent = _shinyPreviewOn ? '⏹ Shiny-Vorschau stoppen' : '👁 Shiny-Vorschau starten';
+        }
+        document.getElementById('shinySweepMs').addEventListener('input', function () {
+            document.getElementById('shinySweepMsVal').textContent = this.value + ' ms';
+        });
+        document.getElementById('shinySweepMs').addEventListener('change', function () {
+            _postBoardSetting('shinySweepMs', this.value);
+        });
+        document.getElementById('shinyPauseMs').addEventListener('input', function () {
+            document.getElementById('shinyPauseMsVal').textContent = this.value + ' ms';
+        });
+        document.getElementById('shinyPauseMs').addEventListener('change', function () {
+            _postBoardSetting('shinyPauseMs', this.value);
+        });
+        document.getElementById('shinyColor').addEventListener('change', function () {
+            _postBoardSetting('shinyColor', this.value);
+        });
 
         // Handle board settings form submission
         document.getElementById('boardSettingsForm').addEventListener('submit', function (e) {

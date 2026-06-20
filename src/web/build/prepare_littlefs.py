@@ -27,7 +27,7 @@ except ImportError:
 BUILD_DIR = Path("src/web/build")
 DATA_DIR = Path("data")
 
-SUPPORTED_EXTENSIONS = {".html", ".css", ".js", ".svg", ".mp3", ".png", ".json", ".woff2"}
+SUPPORTED_EXTENSIONS = {".html", ".css", ".js", ".svg", ".mp3", ".m4a", ".png", ".json", ".woff2"}
 
 
 def is_nogz(filename: str) -> bool:
